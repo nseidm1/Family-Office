@@ -382,6 +382,89 @@ export function buildAerodromeSwapTxs(token, amount, route, tokenOut, minOut, re
   return [approveTx, { label: `swap ${short(token)} → ${short(tokenOut)} (CL)`, to: route.router, data, chainId: venue.chainId }];
 }
 
+/* Bridges ONE arbitrary token from ONE origin chain straight to the user on Ethereum mainnet, with no
+   compose message. The sibling of buildAcrossBridgeTxs() above, which exists specifically to move USDC
+   and swap it to crvUSD on arrival through the MulticallHandler.
+   THIS one is deliberately plain: recipient is the user, message is empty. It is used for Velodrome
+   leaf rewards, where the reward token is whatever a bribe happened to be paid in (USDT0, WETH, kBTC…)
+   and the only reliable statement is "get it off a chain with no liquidity and onto one that has
+   some". Composing a mainnet swap per token would mean a venue per token; delivering the token itself
+   is honest and can be consolidated afterwards. See FA-012 in TASKS.md.
+   `spokePool` is passed in rather than looked up because Across's SpokePool differs per chain and its
+   own suggested-fees response is the authoritative source for it — the same reason
+   buildAcrossBridgeTxs takes an `origin`. */
+export function buildAcrossTokenBridgeTxs({ account, chainId, spokePool, inputToken, outputToken, inputAmount, outputAmount, label }) {
+  const approveTx = {
+    label: `approve ${label || short(inputToken)} → Across SpokePool`,
+    to: inputToken,
+    data: '0x095ea7b3' + encodeAddress(spokePool) + encodeUint256(inputAmount),
+    chainId,
+  };
+  const depositTx = {
+    label: `bridge ${label || short(inputToken)} → Ethereum mainnet via Across`,
+    to: spokePool,
+    data: '0x7aef642c'
+      + encodeAddress(account) // depositor
+      + encodeAddress(account) // recipient — the user directly, no handler, no compose
+      + encodeAddress(inputToken)
+      + encodeAddress(outputToken)
+      + encodeUint256(inputAmount)
+      + encodeUint256(outputAmount)
+      + encodeUint256(BigInt(ETH_MAINNET)) // destinationChainId
+      + encodeAddress('0x0000000000000000000000000000000000000000') // exclusiveRelayer
+      + encodeUint256(21600n) // fillDeadlineOffset — 6h, Across's own frontend default
+      + encodeUint256(0n) // exclusivityParameter
+      + encodeUint256(11n * 32n) // offset to message
+      + encodeBytesArg('0x'), // empty message
+    chainId,
+  };
+  return [approveTx, depositTx];
+}
+
+/* Across's advertised routes, fetched once and cached. `available-routes` is a single ~1,500-entry
+   list covering every chain pair, so one fetch answers "can this exact token leave this exact chain"
+   for every token in a claim — which is the question a Velodrome leaf claim asks up to ten times.
+   Matched on ADDRESS, never symbol: Ink's USDC.e and Ink's USDC are different tokens with the same
+   family of name, and only one of them has a route (measured — USDT0 matches Across's "USDT" entry by
+   address while USDC.e matches nothing). */
+let acrossRoutesCache = null;
+export async function acrossRoutes() {
+  if (!acrossRoutesCache) {
+    acrossRoutesCache = fetchJson('https://app.across.to/api/available-routes').catch((err) => {
+      acrossRoutesCache = null; // a failed fetch must not poison the cache for the rest of the session
+      throw err;
+    });
+  }
+  return acrossRoutesCache;
+}
+
+/* Quotes ONE token leaving `chainId` for mainnet. Returns null when Across does not carry it, which is
+   a normal answer and not an error — most exotic bribe tokens have no route. */
+export async function quoteAcrossToken(chainId, token, amount) {
+  let routes;
+  try { routes = await acrossRoutes(); } catch { return null; }
+  const hit = routes.find((r) => String(r.originChainId) === String(Number(chainId))
+    && String(r.destinationChainId) === String(Number(ETH_MAINNET))
+    && String(r.originToken).toLowerCase() === String(token).toLowerCase());
+  if (!hit) return null;
+  try {
+    const url = `https://app.across.to/api/suggested-fees?inputToken=${hit.originToken}`
+      + `&outputToken=${hit.destinationToken}&originChainId=${Number(chainId)}`
+      + `&destinationChainId=${Number(ETH_MAINNET)}&amount=${amount}`;
+    const json = await fetchJson(url);
+    return {
+      outputAmount: BigInt(json.outputAmount),
+      outputToken: hit.destinationToken,
+      spokePool: json.spokePoolAddress,
+      symbol: hit.originTokenSymbol,
+      destinationSymbol: hit.destinationTokenSymbol || hit.originTokenSymbol,
+    };
+  } catch (err) {
+    logErr(`Across quote failed for ${short(token)} on chain ${chainId}`, err);
+    return null;
+  }
+}
+
 // ABI-encodes a `bytes` value the way a dynamic-bytes function argument is encoded: a length
 // word followed by the data, right-padded to a 32-byte multiple.
 export function encodeBytesArg(hexData) {

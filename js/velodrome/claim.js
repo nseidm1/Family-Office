@@ -46,7 +46,7 @@ import { isUserRejection, sendAndWait } from '../tx/send.js';
 /* The root (Optimism) legs reuse Aerodrome's builders with a venue argument rather than
    reimplementing them — Optimism's root Voter and Router answer the SAME selectors as Base's, each
    confirmed in live bytecode. See velodrome/txs.js's header for why only the leaf side is new. */
-import { buildAcrossBridgeTxs, buildAerodromeClaimTxs, buildAerodromeSwapTxs, fetchAcrossSuggestedFees } from '../aerodrome/routing.js';
+import { buildAcrossBridgeTxs, buildAcrossTokenBridgeTxs, buildAerodromeClaimTxs, buildAerodromeSwapTxs, fetchAcrossSuggestedFees, quoteAcrossToken } from '../aerodrome/routing.js';
 import {
   buildLeafBridgeTxs, buildLeafClaimTxs, buildLeafSwapTxs, erc20Balance,
   leafVeloBalance, quoteLeafBridgeFee, rootUsdcBalance, rootVeloBalance,
@@ -78,6 +78,18 @@ export const LEAF_DUST_USD = 5;
 
 // 1% tolerance, matching aerodrome/routing.js's SLIPPAGE_BPS so the two flows guard swaps the
 // same way rather than each inventing a number.
+/* A quote that survives less than this fraction of the token's USD value is NOT a route, and is
+   treated exactly like a missing pool.
+   MEASURED, and the reason this constant exists: veNFT #151 holds $20,202 of rewards on Ink whose
+   tokens DO have XVELO pools — so they quoted "successfully" — but the Ink WETH/XVELO volatile pool
+   holds 0.0092 WETH and 1,006 XVELO in total. A constant-product pool can never return more than its
+   entire reserve, so every one of those quotes asymptotes at ~1,006 XVELO (~$17) regardless of input:
+   1 WETH quotes 996.93, 5 WETH quotes 1004.23. $18,331 of routable value quoted to $74 of VELO.
+   Detecting a pool is not finding a route — the repo's own "compare, don't just detect" rule — and a
+   quote returning 0.4% of value is a pool that exists and a route that does not. 0.7 tolerates real
+   slippage (a 30% haircut is already terrible) while catching destruction of this order. */
+export const MIN_ROUTE_EFFICIENCY = 0.7;
+
 export const SLIPPAGE_BPS = 100n;
 export const applySlippage = (amount) => amount - (amount * SLIPPAGE_BPS) / 10000n;
 
@@ -233,6 +245,12 @@ function buildExecSteps(chains, { mainnet }) {
       // be a transaction that does nothing, and it showed up immediately in demo mode because
       // VELO is itself one of the commonest leaf rewards.
       if (String(t.addr).toLowerCase() === String(VELODROME.token).toLowerCase()) continue;
+      // No viable route: the ledger already excludes its value, so emitting a swap step would promise
+      // a transaction that cannot be built (buildLeafSwapTxs refuses without a minOut) and would trip
+      // the executor's own pre-flight refusal on every run.
+      if (t.unquotable) continue;
+      // Bridged straight to mainnet — it gets its own step below, not a swap-to-VELO step.
+      if (t.route === 'across') continue;
       // Falls back to a plain-text part when an address is missing rather than emitting a token
       // part without one. A malformed part does not fail where it is created — it throws later,
       // inside the panel's row build, which aborts the list PART WAY and leaves the panel looking
@@ -247,7 +265,22 @@ function buildExecSteps(chains, { mainnet }) {
         parts: [TXT('swap '), t.addr ? { ...TOK(t.addr), symbol: t.symbol } : TXT(label), TXT(' → VELO')],
       });
     }
-    steps.push({ kind: 'leaf-bridge', chainId: c.chainId, group: 'leaf', parts: [TXT('bridge VELO → Optimism (Velodrome TokenBridge)')] });
+    // One step per Across-carried token: approve + deposit, straight to mainnet.
+    for (const t of c.tokens) {
+      if (t.route !== 'across') continue;
+      steps.push({
+        kind: 'leaf-across',
+        token: t.addr,
+        chainId: c.chainId,
+        group: 'leaf',
+        parts: [TXT('bridge '), t.addr ? { ...TOK(t.addr), symbol: t.symbol } : TXT(t.symbol || '?'), TXT(' → Ethereum mainnet (Across)')],
+      });
+    }
+    // Only when something is actually becoming VELO on this leaf — with every token bridged directly
+    // there is no XVELO to send, and a bridge step would sit there forever with nothing to move.
+    if (c.tokens.some((t) => t.route !== 'across' && !t.unquotable)) {
+      steps.push({ kind: 'leaf-bridge', chainId: c.chainId, group: 'leaf', parts: [TXT('bridge VELO → Optimism (Velodrome TokenBridge)')] });
+    }
   }
   // Only when a leaf actually bridged something — with root-only rewards there is no VELO
   // arriving on Optimism to consolidate, and a step for it would never execute.
@@ -295,17 +328,32 @@ function buildTotals(chains, { mainnet, rootQuote = null, mainnetQuote = null })
      their own pools, which are not quoted here (they are per-token and the preview does not walk
      them), so that portion still uses the fallback. Keeping the two separate is what stops a real
      quote from being diluted by a guess applied over the top of it. */
+  /* Value on the leaves with no VELO route at all. The quoted path cannot carry it and the fallback
+     must not pretend to either, so it is excluded from both and surfaced on its own ledger row. */
+  const unroutableUsd = chains.reduce((sum, c) => sum + (c.unroutableUsd || 0), 0);
+  /* Value bridged straight from a leaf to mainnet via Across. It never becomes VELO, never lands on
+     Optimism, and so must be kept OUT of the VELO/consolidation rows and added at the end — folding it
+     into them would misreport which chain the money is on at each step. */
+  const acrossDirectUsd = chains.reduce((sum, c) => sum + (c.acrossUsd || 0), 0);
+  const acrossClaimedUsd = chains.reduce((sum, c) => sum
+    + (c.tokens || []).reduce((s2, t) => s2 + (t.route === 'across' ? (t.usd || 0) : 0), 0), 0);
+  const routableLeafUsd = Math.max(0, leafClaimedUsd - unroutableUsd - acrossClaimedUsd);
+
   const leafBridgedUsd = rootQuote
     ? Number(rootQuote.amountOut) / 1e6
-    : leafClaimedUsd * (1 - LEAF_SWAP_COST) * (1 - BRIDGE_COST) * (1 - ROOT_SWAP_COST);
+    : routableLeafUsd * (1 - LEAF_SWAP_COST) * (1 - BRIDGE_COST) * (1 - ROOT_SWAP_COST);
   const rootConsolidatedUsd = rootClaimedUsd * (1 - ROOT_SWAP_COST);
   const usdcUsd = leafBridgedUsd + rootConsolidatedUsd;
 
-  const crvUsdUsd = mainnetQuote ? Number(mainnetQuote.crvUsdOut) / 1e18 : usdcUsd * (1 - MAINNET_BRIDGE_COST);
+  const crvUsdUsd = (mainnetQuote ? Number(mainnetQuote.crvUsdOut) / 1e18 : usdcUsd * (1 - MAINNET_BRIDGE_COST))
+    + acrossDirectUsd;
 
-  // Pre-consolidation VELO value: quoted legs make this the post-bridge figure, so it is reported as
-  // the same number the consolidation starts from rather than a separately-guessed one.
-  const veloUsd = rootQuote ? leafBridgedUsd + rootClaimedUsd : claimedUsd * (1 - LEAF_SWAP_COST) * (1 - BRIDGE_COST);
+  /* Value on Optimism before consolidation: what the leaves delivered, plus the root's own claim which
+     was already there. Built from `leafBridgedUsd` in BOTH branches deliberately — the fallback used
+     to start from `claimedUsd`, i.e. EVERY claimable dollar including the value that has no viable
+     route, which is how this row came to read $23,077 while the row below it read $2,275. Any figure
+     downstream of the swap must descend from the routable subset, never from the gross claim. */
+  const veloUsd = leafBridgedUsd + rootClaimedUsd;
 
   const estimated = !rootQuote
     || (mainnet && !mainnetQuote)
@@ -314,6 +362,8 @@ function buildTotals(chains, { mainnet, rootQuote = null, mainnetQuote = null })
 
   return {
     claimedUsd,
+    unroutableUsd,
+    acrossDirectUsd,
     root: { veloUsd, usdcUsd },
     mainnet: mainnet ? { crvUsdUsd } : null,
     deliveredUsd: mainnet ? crvUsdUsd : usdcUsd,
@@ -341,7 +391,10 @@ function assemble(chains, { demo, mainnet = true, rootQuote = null, mainnetQuote
     execSteps: buildExecSteps(live.filter((c) => !c.dust), { mainnet }),
     root: t.root,
     mainnet: t.mainnet,
-    totals: { claimedUsd: allClaimedUsd, claimableAfterDustUsd: t.claimedUsd, dustUsd, deliveredUsd: t.deliveredUsd },
+    totals: {
+      claimedUsd: allClaimedUsd, claimableAfterDustUsd: t.claimedUsd, dustUsd,
+      unroutableUsd: t.unroutableUsd, acrossDirectUsd: t.acrossDirectUsd, deliveredUsd: t.deliveredUsd,
+    },
   };
 }
 
@@ -351,6 +404,13 @@ export async function buildVelodromeClaimPreview(positions, onProgress = () => {
   onProgress({ fraction: 0.05, text: 'Reading claimable positions…' });
   const chains = [];
   const leaves = VELODROME_LEAF_CHAINS;
+  /* One VELO price for the whole preview, used to judge whether each leaf quote is economically a
+     route at all (see MIN_ROUTE_EFFICIENCY). Fetched once rather than per token, and a failure leaves
+     it null — in which case no quote is rejected on efficiency grounds, because guessing would be
+     worse than the status quo. */
+  const veloPriceUsd = await priceTokensUsd([VELODROME.token], VELODROME.priceChain)
+    .then((p) => p[VELODROME.token]?.price ?? p[String(VELODROME.token).toLowerCase()]?.price ?? null)
+    .catch(() => null);
 
   for (let i = 0; i < leaves.length; i++) {
     const leaf = leaves[i];
@@ -404,8 +464,37 @@ export async function buildVelodromeClaimPreview(positions, onProgress = () => {
       let quoted = !dust;
       if (!dust) {
         for (const t of tokens) {
+          /* ACROSS-DIRECT FIRST, and this ordering is the whole point of FA-012. Velodrome's leaf
+             deployments hold almost no liquidity — Ink's entire WETH/XVELO pool is 0.0092 WETH — so
+             swapping a reward token there destroys it. Across carries the majors and stables straight
+             off the leaf to mainnet instead: measured on veNFT #151, that is $16,719 of the $20,933
+             which previously had nowhere to go. Only tokens Across will not carry fall through to the
+             leaf-swap path below. */
+          const ax = await quoteAcrossToken(leaf.chainId, t.addr, t.amount);
+          if (ax) {
+            t.across = ax;
+            t.route = 'across';
+            // Across quotes in the token's own units; value it with the price already fetched for it.
+            t.acrossOutUsd = t.usd != null && t.amount > 0n
+              ? (Number(ax.outputAmount) / Number(t.amount)) * t.usd
+              : null;
+            continue;
+          }
+
           const q = await quoteLeafToVelo(leaf.chainId, t.addr, t.amount);
-          if (!q) { quoted = false; t.unquotable = true; continue; }
+          if (!q) { quoted = false; t.unquotable = true; t.noRouteReason = 'no Across route, no XVELO pool'; continue; }
+          /* Reject a quote that destroys the value even though the pool exists — see
+             MIN_ROUTE_EFFICIENCY. Skipped for a token already VELO (no swap happens, nothing to lose)
+             and when either side is unpriced, since an efficiency ratio needs both numbers. */
+          if (!q.direct && t.usd > 0 && veloPriceUsd != null) {
+            const outUsd = (Number(q.amountOut) / 1e18) * veloPriceUsd;
+            if (outUsd < t.usd * MIN_ROUTE_EFFICIENCY) {
+              quoted = false;
+              t.unquotable = true;
+              t.noRouteReason = `pool too thin — ${usd(t.usd)} would swap to ${usd(outUsd)}`;
+              continue;
+            }
+          }
           t.veloOut = q.amountOut;
           /* The stable/volatile flag the quote actually CHOSE, carried through to execution. The
              executor must send the same flavour that was quoted: on Ink the WETH/XVELO pair exists
@@ -418,7 +507,16 @@ export async function buildVelodromeClaimPreview(positions, onProgress = () => {
           veloOut += q.amountOut;
         }
       }
-      chains.push({ chainId: leaf.chainId, tokens, dust, veloOut, quoted, byVenft });
+      /* The USD that has NO route to VELO on this leaf. Tracked as a figure, not just a per-token
+         flag, because the ledger has to SUBTRACT it: `veloOut` (and therefore the root quote derived
+         from it) covers only the tokens that could be quoted, so presenting it against a full-value
+         "Claimed" row silently implies the rest arrives too. That is exactly the reported bug —
+         $23,239 claimed against $74.49 delivered, with nothing on screen accounting for the
+         difference, because a handful of exotic leaf bribe tokens have no XVELO pool at all. */
+      const unroutableUsd = tokens.filter((t) => t.unquotable).reduce((sum, t) => sum + (t.usd || 0), 0);
+      // Value leaving this leaf straight to mainnet, bypassing VELO and Optimism entirely.
+      const acrossUsd = tokens.reduce((sum, t) => sum + (t.route === 'across' ? (t.acrossOutUsd ?? t.usd ?? 0) : 0), 0);
+      chains.push({ chainId: leaf.chainId, tokens, dust, veloOut, quoted, unroutableUsd, acrossUsd, byVenft });
     } catch (err) {
       logErr(`Velodrome claim preview: ${leaf.name} failed`, err);
     }
@@ -490,7 +588,20 @@ export async function buildVelodromeClaimPreview(positions, onProgress = () => {
         usdc: VELODROME_CLAIM.root.usdc,
         name: 'Optimism',
       };
-      const acrossQuote = await fetchAcrossSuggestedFees(rootQuote.amountOut, origin);
+      /* Quote the bridge against ALL the USDC that will be sitting on Optimism, not just the part the
+         leaves bridged in. THIS WAS A REAL BUG and it is the second half of the reported mismatch:
+         `rootQuote.amountOut` covers only VELO arriving from the leaves, so the Across+Curve quote
+         derived from it excluded the root chain's OWN claimed rewards entirely — the ledger showed
+         $2,353.49 consolidated to USDC and then $74.49 delivered, the difference being precisely the
+         Optimism root's own value silently dropped between the two rows.
+         The root portion is an ESTIMATE (its per-token routes are not walked in the preview), which is
+         why a claim including root rewards still reports `estimated: true`. An estimate included is
+         far better than real money excluded. */
+      const rootOwnUsd = chains
+        .filter((c) => c.isRoot)
+        .reduce((sum, c) => sum + (c.tokens || []).reduce((s2, t) => s2 + (t.usd || 0), 0), 0);
+      const rootOwnUsdc6 = BigInt(Math.max(0, Math.round(rootOwnUsd * (1 - ROOT_SWAP_COST) * 1e6)));
+      const acrossQuote = await fetchAcrossSuggestedFees(rootQuote.amountOut + rootOwnUsdc6, origin);
       const dy = await chainCall(ETH_MAINNET, CURVE_CRVUSD_USDC_POOL,
         '0x5e0d443f' + encodeUint256(0n) + encodeUint256(1n) + encodeUint256(acrossQuote.outputAmount));
       mainnetQuote = { usdcOut: acrossQuote.outputAmount, crvUsdOut: word(dy, 0) };

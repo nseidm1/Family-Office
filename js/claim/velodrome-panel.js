@@ -214,7 +214,11 @@ export function showVelodromeClaimPanel(preview, executeClaim) {
 
     const ledger = document.createElement('div');
     const ledgerRows = {};
-    for (const [key, name] of [['claimed', 'Claimed'], ['dust', 'Skipped — not worth the gas'], ['velo', 'Bridged to Optimism'], ['usdc', 'Consolidated to USDC'], ['delivered', 'Delivered']]) {
+    /* `unroutable` sits directly under `dust` on purpose: both are subtractions from Claimed, and
+       together they are what makes this ledger RECONCILE. Without the unroutable row the panel showed
+       $23,239 claimed against $74.49 delivered with nothing accounting for the gap — the leaf reward
+       tokens with no XVELO pool contribute nothing to the quote but were still counted as claimable. */
+    for (const [key, name] of [['claimed', 'Claimed'], ['dust', 'Skipped — not worth the gas'], ['unroutable', 'No route to VELO — cannot be moved'], ['velo', 'Bridged to Optimism'], ['usdc', 'Consolidated to USDC'], ['delivered', 'Delivered']]) {
       const row = document.createElement('div');
       row.className = 'claim-preview-ledger-row' + (key === 'delivered' ? ' claim-preview-ledger-row--total' : '');
       const l = document.createElement('span');
@@ -314,8 +318,18 @@ export function showVelodromeClaimPanel(preview, executeClaim) {
       ledgerRows.dust.value.textContent = `−${usd(skipped)}`;
       // Costs are proportional to what is actually selected — showing the full-claim figures
       // while the user has unticked half the chains would misstate what they are approving.
-      const base = preview.totals?.claimableAfterDustUsd || preview.totals?.claimedUsd || 0;
-      const share = base ? claimed / base : 0;
+      /* Value on selected chains that has no VELO route. Shown as its own subtraction, and EXCLUDED
+         from the base the downstream figures scale against — the quoted leaf figure never included
+         it, so scaling by a share computed over it would understate every row below. */
+      const unroutable = chains
+        .filter((c) => selectedChains.has(Number(c.chainId)))
+        .reduce((sum, c) => sum + (c.unroutableUsd || 0), 0);
+      ledgerRows.unroutable.row.hidden = unroutable <= 0.005;
+      ledgerRows.unroutable.value.textContent = `−${usd(unroutable)}`;
+
+      const fullBase = preview.totals?.claimableAfterDustUsd || preview.totals?.claimedUsd || 0;
+      const base = Math.max(0, fullBase - (preview.totals?.unroutableUsd || 0));
+      const share = base ? Math.max(0, claimed - unroutable) / base : 0;
       const veloUsd = (preview.root?.veloUsd ?? claimed) * share || 0;
       const usdcUsd = (preview.root?.usdcUsd ?? veloUsd) * share || 0;
       ledgerRows.velo.value.textContent = selectedChains.size ? usd(veloUsd) : '—';
