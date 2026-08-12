@@ -853,7 +853,13 @@
   overflow-y: auto;
   /* Required for the inner scroll to engage instead of this box forcing its column taller. */
   min-height: 0;
-  flex: 1 1 auto;
+  /* flex-basis 0, NOT auto. With `auto` the box asks for its full CONTENT height, so a 14-step claim
+     made the whole panel as tall as its transaction list — 1129px of a 1169px viewport, which reads as
+     a takeover of the page rather than a dialog on top of it. At 0 the box asks for nothing and simply
+     grows into whatever the row gives it, which means the LEFT column's content sets the panel's
+     height and the transactions scroll inside it. That is the intended relationship: the review is the
+     document, the transaction list is a viewport onto a list of any length. */
+  flex: 1 1 0;
   /* NO max-height. There was a `max-height: 38vh` here "so a 13-step multi-chain claim cannot outgrow
      the panel" — but outgrowing was already impossible: this box is a flex child with min-height: 0
      inside a column the panel's own max-height constrains, so it scrolls internally regardless. All
