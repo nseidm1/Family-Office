@@ -851,11 +851,15 @@
 
 .velo-steps-scroll {
   overflow-y: auto;
+  /* Required for the inner scroll to engage instead of this box forcing its column taller. */
   min-height: 0;
   flex: 1 1 auto;
-  /* Deep enough to show several steps at once, capped so a 13-step multi-chain claim cannot
-     outgrow the panel. scrollIntoView({block:'nearest'}) on the active step scrolls THIS box. */
-  max-height: 38vh;
+  /* NO max-height. There was a `max-height: 38vh` here "so a 13-step multi-chain claim cannot outgrow
+     the panel" — but outgrowing was already impossible: this box is a flex child with min-height: 0
+     inside a column the panel's own max-height constrains, so it scrolls internally regardless. All
+     the cap actually did was stop the list at 38vh of the VIEWPORT while the panel itself was much
+     taller, leaving dead space below the transactions — measured at 444px of list inside a 945px
+     panel. Let flex fill the column and the list reaches the bottom at any panel height. */
   padding-right: 0.25rem;
 }
 
