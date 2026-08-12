@@ -6,6 +6,7 @@ import { chainName } from '../core/chains.js';
 import { buildProtocolNode, renderAlphaIcons, renderPortfolioTotal, renderProtocolResult, setAccordionOpen } from '../render/portfolio.js';
 import { $, formatUnlock, usd } from '../core/utils.js';
 import { uiLog } from '../core/ui-debug.js';
+import { onUserPanelInteraction } from '../core/interaction.js';
 
 export const demoUnlock = (daysFromNow) => formatUnlock(Math.floor(Date.now() / 1000) + daysFromNow * 86_400);
 
@@ -174,6 +175,12 @@ export function buildDemoResults() {
 // total color, etc.) in both themes with no extra wiring.
 export const DEMO_CYCLE_MS = 4000;
 export let demoTimer = null;
+/* "Demo mode is active" — a SEPARATE fact from "the auto-tour is running".
+   These were the same variable (`demoTimer`), which broke the moment the tour learned to pause:
+   claim/orchestrate.js tests `demoTimer` to decide whether Claim should run the simulated flow, so
+   pausing the tour made the Claim button silently do nothing after any accordion click. One variable
+   answering two questions is fine right up until the answers diverge. */
+export let demoActive = false;
 export let demoDetailsEls = [];
 export let demoIndex = -1;
 
@@ -186,8 +193,36 @@ export function showDemoIndex() {
   demoDetailsEls.forEach(({ details, body }, i) => setAccordionOpen(details, body, i === demoIndex));
 }
 
+/* Stops the auto-tour WITHOUT tearing down demo mode — the distinction stopDemoMode() does not make.
+ *
+ * WHY: the cycle closes whatever card the user just opened on its next tick, so reading anything in
+ * demo mode means fighting the tour. Once a human has touched the panels they are driving, and the
+ * tour's job is done.
+ *
+ * Deliberately NOT stopDemoMode(): that unwinds the whole simulation (data, badge, cards) and is what
+ * runs when a real wallet connects. Here the demo must carry on being the demo; only the timer stops.
+ *
+ * `reason` is carried into the log because "the cycle stopped" is uninformative on its own — whether
+ * a person clicked or the claim panel opened is the part worth knowing when reading a session back.
+ * Idempotent: called on every subsequent click too, and must not log a second time or the strip fills
+ * with identical lines. */
+export let demoCyclePaused = false;
+/* Subscribed ONCE at module load rather than per session, so repeated disconnect/reconnect cycles
+   cannot pile up listeners. pauseDemoCycle() is itself a no-op when no timer is running, which is
+   what makes a page-lifetime subscription safe. */
+onUserPanelInteraction((reason) => pauseDemoCycle(reason));
+export function pauseDemoCycle(reason) {
+  if (!demoTimer || demoCyclePaused) return;
+  clearInterval(demoTimer);
+  demoTimer = null;
+  demoCyclePaused = true;
+  uiLog('demo', 'cycle paused', { reason, openIndex: demoIndex });
+}
+
 export function startDemoMode() {
-  if (demoTimer) return; // already running — avoid restarting the cycle/flicker on redundant calls
+  // Guarded on demoActive, NOT demoTimer: once the tour is paused demoTimer is null, and re-entering
+  // here would rebuild the whole demo over a session the user is already reading.
+  if (demoActive) return;
 
   const badge = $('#demo-badge');
   if (badge) badge.hidden = false;
@@ -227,7 +262,7 @@ export function startDemoMode() {
   const aerodromeNode = aerodromeIdx !== -1 ? demoDetailsEls[aerodromeIdx] : null;
   if (aerodromeNode) {
     demoAerodromeTokens().then((tokens) => {
-      if (!tokens || !demoTimer || !aerodromeNode.details.isConnected) return;
+      if (!tokens || !demoActive || !aerodromeNode.details.isConnected) return;
       const live = buildDemoAerodromeCardResult(tokens);
       shownResults.aerodrome = live;
       const summary = aerodromeNode.details.querySelector(':scope > summary');
@@ -244,7 +279,7 @@ export function startDemoMode() {
   const velodromeNode = velodromeIdx !== -1 ? demoDetailsEls[velodromeIdx] : null;
   if (velodromeNode) {
     demoVelodromeChains().then((chains) => {
-      if (!chains || !demoTimer || !velodromeNode.details.isConnected) return;
+      if (!chains || !demoActive || !velodromeNode.details.isConnected) return;
       const live = buildDemoVelodromeCardResult(chains);
       shownResults.velodrome = live;
       const summary = velodromeNode.details.querySelector(':scope > summary');
@@ -254,8 +289,12 @@ export function startDemoMode() {
     });
   }
 
+  demoActive = true;
   demoIndex = 0;
   showDemoIndex();
+  /* A fresh demo session starts un-paused: disconnecting and reconnecting a wallet re-enters demo
+     mode, and a click from the PREVIOUS session must not leave the new one's tour dead. */
+  demoCyclePaused = false;
   demoTimer = setInterval(() => {
     demoIndex = (demoIndex + 1) % demoDetailsEls.length;
     showDemoIndex();
@@ -272,6 +311,11 @@ export function stopDemoMode() {
   }
   demoDetailsEls = [];
   demoIndex = -1;
+  /* Both flags clear here: a real wallet connecting ends the session outright, so the next entry into
+     demo mode must start fresh — active again, and un-paused regardless of what the user clicked
+     during the previous one. */
+  demoActive = false;
+  demoCyclePaused = false;
   const badge = $('#demo-badge');
   if (badge) badge.hidden = true;
   uiLog('demo', 'stopped');

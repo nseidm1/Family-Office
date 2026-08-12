@@ -3,7 +3,7 @@ import { buildDemoAerodromeClaimPreview, demoAerodromeTokens, demoExecuteAerodro
 import { applyTokenIcon } from '../aerodrome/icons.js';
 import { AERODROME, CURVE } from '../protocols/config.js';
 import { ETH_MAINNET, chainName } from '../core/chains.js';
-import { buildDemoResults, demoTimer } from '../demo/data.js';
+import { buildDemoResults, demoActive } from '../demo/data.js';
 import { showTxSuccessPopup } from '../tx/feedback.js';
 import { deferClaimReveal, pendingClaimReveals, portfolioInFlight, portfolioResults } from '../main.js';
 import { showClaimPreviewPanel } from './panel.js';
@@ -206,7 +206,10 @@ export async function claimToMainnetDemo(protoId) {
 }
 
 export async function claimToMainnet(protoId) {
-  if (demoTimer) {
+  /* demoActive, not demoTimer. This tested the TOUR's interval handle as a proxy for "demo mode is
+     on", which stopped being equivalent when the tour learned to pause on user interaction — and the
+     symptom was the Claim button doing nothing at all after any accordion click. */
+  if (demoActive) {
     await claimToMainnetDemo(protoId);
     return;
   }

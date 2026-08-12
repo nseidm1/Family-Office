@@ -3,6 +3,7 @@ import { fetchCurveVeCrv, fetchVotemarket } from '../protocols/curve.js';
 import { refreshProtocol } from '../main.js';
 import { buildClaimMenu, setClaimAvailable } from '../claim/orchestrate.js';
 import { setSensitiveText } from '../core/prefs.js';
+import { notifyUserPanelInteraction } from '../core/interaction.js';
 import { $, fadeInSwap, log, spinnerNode, usd } from '../core/utils.js';
 import { money, uiTrace } from '../core/ui-debug.js';
 
@@ -143,6 +144,12 @@ export function enableCardAccordion(details) {
   if (!summary || !body) return;
   summary.addEventListener('click', (e) => {
     e.preventDefault();
+    /* Announce that a HUMAN did this. Demo mode listens and stops its auto-tour, which would
+       otherwise close the card on its next tick. Announced rather than acted on: this file has no
+       business knowing demo mode exists, and importing it here would add an edge to a module graph
+       that is already one cycle. showDemoIndex()'s own calls go straight to setAccordionOpen() and
+       never through this listener, so the tour cannot cancel itself on its first tick. */
+    notifyUserPanelInteraction('card accordion click');
     setAccordionOpen(details, body, !details.open);
   });
 }
@@ -155,6 +162,7 @@ export function enableAccordion(details, body) {
   const summary = details.querySelector(':scope > summary');
   summary.addEventListener('click', (e) => {
     e.preventDefault();
+    notifyUserPanelInteraction('protocol accordion click'); // see enableCardAccordion above
     const opening = !details.open;
     if (opening) closeSiblingAccordions(details);
     setAccordionOpen(details, body, opening);
