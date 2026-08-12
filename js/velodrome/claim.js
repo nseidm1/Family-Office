@@ -47,6 +47,7 @@ import { isUserRejection, sendAndWait } from '../tx/send.js';
    reimplementing them — Optimism's root Voter and Router answer the SAME selectors as Base's, each
    confirmed in live bytecode. See velodrome/txs.js's header for why only the leaf side is new. */
 import { buildAcrossBridgeTxs, buildAcrossTokenBridgeTxs, buildAerodromeClaimTxs, buildAerodromeSwapTxs, fetchAcrossSuggestedFees, quoteAcrossToken } from '../aerodrome/routing.js';
+import { buildLifiTxs, quoteLifiToOptimismUsdc } from './lifi.js';
 import {
   buildLeafBridgeTxs, buildLeafClaimTxs, buildLeafSwapTxs, erc20Balance,
   leafVeloBalance, quoteLeafBridgeFee, rootUsdcBalance, rootVeloBalance,
@@ -250,7 +251,7 @@ function buildExecSteps(chains, { mainnet }) {
       // the executor's own pre-flight refusal on every run.
       if (t.unquotable) continue;
       // Bridged straight to mainnet — it gets its own step below, not a swap-to-VELO step.
-      if (t.route === 'across') continue;
+      if (t.route === 'across' || t.route === 'lifi') continue;
       // Falls back to a plain-text part when an address is missing rather than emitting a token
       // part without one. A malformed part does not fail where it is created — it throws later,
       // inside the panel's row build, which aborts the list PART WAY and leaves the panel looking
@@ -267,6 +268,16 @@ function buildExecSteps(chains, { mainnet }) {
     }
     // One step per Across-carried token: approve + deposit, straight to mainnet.
     for (const t of c.tokens) {
+      if (t.route !== 'lifi') continue;
+      steps.push({
+        kind: 'leaf-lifi',
+        token: t.addr,
+        chainId: c.chainId,
+        group: 'leaf',
+        parts: [TXT('swap + bridge '), t.addr ? { ...TOK(t.addr), symbol: t.symbol } : TXT(t.symbol || '?'), TXT(` → USDC on Optimism (${t.lifi?.tool || 'LI.FI'})`)],
+      });
+    }
+    for (const t of c.tokens) {
       if (t.route !== 'across') continue;
       steps.push({
         kind: 'leaf-across',
@@ -278,7 +289,7 @@ function buildExecSteps(chains, { mainnet }) {
     }
     // Only when something is actually becoming VELO on this leaf — with every token bridged directly
     // there is no XVELO to send, and a bridge step would sit there forever with nothing to move.
-    if (c.tokens.some((t) => t.route !== 'across' && !t.unquotable)) {
+    if (c.tokens.some((t) => t.route !== 'across' && t.route !== 'lifi' && !t.unquotable)) {
       steps.push({ kind: 'leaf-bridge', chainId: c.chainId, group: 'leaf', parts: [TXT('bridge VELO → Optimism (Velodrome TokenBridge)')] });
     }
   }
@@ -337,13 +348,18 @@ function buildTotals(chains, { mainnet, rootQuote = null, mainnetQuote = null })
   const acrossDirectUsd = chains.reduce((sum, c) => sum + (c.acrossUsd || 0), 0);
   const acrossClaimedUsd = chains.reduce((sum, c) => sum
     + (c.tokens || []).reduce((s2, t) => s2 + (t.route === 'across' ? (t.usd || 0) : 0), 0), 0);
-  const routableLeafUsd = Math.max(0, leafClaimedUsd - unroutableUsd - acrossClaimedUsd);
+  /* LI.FI lands USDC ON OPTIMISM, so it belongs in the consolidation row and then rides the existing
+     Across hop to mainnet — unlike acrossDirect, which goes straight to mainnet and must bypass both. */
+  const lifiUsdcUsd = chains.reduce((sum, c) => sum + (c.lifiUsd || 0), 0);
+  const lifiClaimedUsd = chains.reduce((sum, c) => sum
+    + (c.tokens || []).reduce((s2, t) => s2 + (t.route === 'lifi' ? (t.usd || 0) : 0), 0), 0);
+  const routableLeafUsd = Math.max(0, leafClaimedUsd - unroutableUsd - acrossClaimedUsd - lifiClaimedUsd);
 
   const leafBridgedUsd = rootQuote
     ? Number(rootQuote.amountOut) / 1e6
     : routableLeafUsd * (1 - LEAF_SWAP_COST) * (1 - BRIDGE_COST) * (1 - ROOT_SWAP_COST);
   const rootConsolidatedUsd = rootClaimedUsd * (1 - ROOT_SWAP_COST);
-  const usdcUsd = leafBridgedUsd + rootConsolidatedUsd;
+  const usdcUsd = leafBridgedUsd + rootConsolidatedUsd + lifiUsdcUsd;
 
   const crvUsdUsd = (mainnetQuote ? Number(mainnetQuote.crvUsdOut) / 1e18 : usdcUsd * (1 - MAINNET_BRIDGE_COST))
     + acrossDirectUsd;
@@ -353,7 +369,8 @@ function buildTotals(chains, { mainnet, rootQuote = null, mainnetQuote = null })
      to start from `claimedUsd`, i.e. EVERY claimable dollar including the value that has no viable
      route, which is how this row came to read $23,077 while the row below it read $2,275. Any figure
      downstream of the swap must descend from the routable subset, never from the gross claim. */
-  const veloUsd = leafBridgedUsd + rootClaimedUsd;
+  // "On Optimism before consolidation": LI.FI's output is already USDC there, so it counts as arrived.
+  const veloUsd = leafBridgedUsd + rootClaimedUsd + lifiUsdcUsd;
 
   const estimated = !rootQuote
     || (mainnet && !mainnetQuote)
@@ -364,6 +381,7 @@ function buildTotals(chains, { mainnet, rootQuote = null, mainnetQuote = null })
     claimedUsd,
     unroutableUsd,
     acrossDirectUsd,
+    lifiUsdcUsd,
     root: { veloUsd, usdcUsd },
     mainnet: mainnet ? { crvUsdUsd } : null,
     deliveredUsd: mainnet ? crvUsdUsd : usdcUsd,
@@ -393,7 +411,8 @@ function assemble(chains, { demo, mainnet = true, rootQuote = null, mainnetQuote
     mainnet: t.mainnet,
     totals: {
       claimedUsd: allClaimedUsd, claimableAfterDustUsd: t.claimedUsd, dustUsd,
-      unroutableUsd: t.unroutableUsd, acrossDirectUsd: t.acrossDirectUsd, deliveredUsd: t.deliveredUsd,
+      unroutableUsd: t.unroutableUsd, acrossDirectUsd: t.acrossDirectUsd,
+      lifiUsdcUsd: t.lifiUsdcUsd, deliveredUsd: t.deliveredUsd,
     },
   };
 }
@@ -470,6 +489,20 @@ export async function buildVelodromeClaimPreview(positions, onProgress = () => {
              off the leaf to mainnet instead: measured on veNFT #151, that is $16,719 of the $20,933
              which previously had nowhere to go. Only tokens Across will not carry fall through to the
              leaf-swap path below. */
+          /* LI.FI FIRST. Measured on veNFT #151 it delivers 99.2-100% of value as USDC on Optimism,
+             against ~0.4% for the leaf pool and 82% coverage for Across alone, because it combines a
+             source-chain swap with whichever bridge actually serves that pair. See lifi.js's header
+             for the per-token table. */
+          const lf = await quoteLifiToOptimismUsdc({ chainId: leaf.chainId, token: t.addr, amount: t.amount, account: state.account });
+          if (lf) {
+            t.lifi = lf;
+            t.route = 'lifi';
+            t.lifiOutUsdc = lf.usdcOut;
+            // USDC is dollar-pegged and 6-decimal, so its own amount IS the USD figure.
+            t.lifiOutUsd = Number(lf.usdcOut) / 1e6;
+            continue;
+          }
+
           const ax = await quoteAcrossToken(leaf.chainId, t.addr, t.amount);
           if (ax) {
             t.across = ax;
@@ -516,7 +549,11 @@ export async function buildVelodromeClaimPreview(positions, onProgress = () => {
       const unroutableUsd = tokens.filter((t) => t.unquotable).reduce((sum, t) => sum + (t.usd || 0), 0);
       // Value leaving this leaf straight to mainnet, bypassing VELO and Optimism entirely.
       const acrossUsd = tokens.reduce((sum, t) => sum + (t.route === 'across' ? (t.acrossOutUsd ?? t.usd ?? 0) : 0), 0);
-      chains.push({ chainId: leaf.chainId, tokens, dust, veloOut, quoted, unroutableUsd, acrossUsd, byVenft });
+      // Value arriving as USDC on Optimism via LI.FI, and the raw 6-decimal amount the mainnet leg
+      // must be quoted against.
+      const lifiUsd = tokens.reduce((sum, t) => sum + (t.route === 'lifi' ? (t.lifiOutUsd || 0) : 0), 0);
+      const lifiUsdc6 = tokens.reduce((sum, t) => sum + (t.route === 'lifi' ? (t.lifiOutUsdc || 0n) : 0n), 0n);
+      chains.push({ chainId: leaf.chainId, tokens, dust, veloOut, quoted, unroutableUsd, acrossUsd, lifiUsd, lifiUsdc6, byVenft });
     } catch (err) {
       logErr(`Velodrome claim preview: ${leaf.name} failed`, err);
     }
@@ -579,7 +616,13 @@ export async function buildVelodromeClaimPreview(positions, onProgress = () => {
      Failure is non-fatal by design: a preview that cannot reach a third-party API should still open
      with the rest of its figures and fall back to the cost model, not refuse to render. */
   let mainnetQuote = null;
-  if (rootQuote) {
+  /* Quote the mainnet hop whenever USDC will exist on Optimism — from a leaf VELO consolidation, from
+     LI.FI, or from the root's own rewards. Gating it on `rootQuote` alone meant that with every leaf
+     routed by LI.FI (no VELO at all) the final row silently fell back to the cost model. */
+  const anyUsdcOnOptimism = !!rootQuote
+    || chains.some((c) => (c.lifiUsdc6 || 0n) > 0n)
+    || chains.some((c) => c.isRoot);
+  if (anyUsdcOnOptimism) {
     onProgress({ fraction: 0.96, text: 'Quoting the bridge to Ethereum mainnet…' });
     try {
       const origin = {
@@ -601,7 +644,8 @@ export async function buildVelodromeClaimPreview(positions, onProgress = () => {
         .filter((c) => c.isRoot)
         .reduce((sum, c) => sum + (c.tokens || []).reduce((s2, t) => s2 + (t.usd || 0), 0), 0);
       const rootOwnUsdc6 = BigInt(Math.max(0, Math.round(rootOwnUsd * (1 - ROOT_SWAP_COST) * 1e6)));
-      const acrossQuote = await fetchAcrossSuggestedFees(rootQuote.amountOut + rootOwnUsdc6, origin);
+      const lifiUsdc6 = chains.reduce((sum, c) => sum + (c.lifiUsdc6 || 0n), 0n);
+      const acrossQuote = await fetchAcrossSuggestedFees((rootQuote?.amountOut || 0n) + rootOwnUsdc6 + lifiUsdc6, origin);
       const dy = await chainCall(ETH_MAINNET, CURVE_CRVUSD_USDC_POOL,
         '0x5e0d443f' + encodeUint256(0n) + encodeUint256(1n) + encodeUint256(acrossQuote.outputAmount));
       mainnetQuote = { usdcOut: acrossQuote.outputAmount, crvUsdOut: word(dy, 0) };
@@ -953,6 +997,60 @@ export async function executeVelodromeClaim(execPreview, onStep) {
       });
       await track(() => sendAndWait(approveTx));
       await track(() => sendAndWait(swapTx));
+      finishStep();
+      continue;
+    }
+
+    if (step.kind === 'leaf-lifi') {
+      const token = (chain?.tokens || []).find((t) => String(t.addr).toLowerCase() === String(step.token).toLowerCase());
+      if (!token) { onStep(stepIndex, 'error'); throw new Error(`no token record for the LI.FI step on ${chainName(step.chainId)}`); }
+      /* Re-read the balance and RE-QUOTE at send time. A LI.FI quote carries calldata with an embedded
+         amount and a deadline, so a preview quote minutes old is not safe to send: the claim has since
+         executed (so the real balance may differ) and the route may have moved. Same rule every other
+         dependent leg here follows, and it matters more for a vendor payload we do not build ourselves. */
+      const balance = await erc20Balance(step.chainId, token.addr, account);
+      if (balance <= 0n) {
+        log(`${chainName(step.chainId)}: no ${token.symbol} balance after the claim — skipping its bridge`, 'info');
+        finishStep();
+        continue;
+      }
+      const quote = await quoteLifiToOptimismUsdc({ chainId: step.chainId, token: token.addr, amount: balance, account });
+      if (!quote) {
+        onStep(stepIndex, 'error');
+        throw new Error(`LI.FI has no route for ${token.symbol} on ${chainName(step.chainId)} at execution time — it quoted one when the preview was built, so retry the claim`);
+      }
+      const [approveTx, routeTx] = buildLifiTxs({
+        chainId: step.chainId, token: token.addr, amount: balance, quote, symbol: token.symbol,
+      });
+      await track(() => sendAndWait(approveTx));
+      await track(() => sendAndWait(routeTx));
+      log(`${chainName(step.chainId)}: ${token.symbol} routed to USDC on Optimism via ${quote.tool} — arrival is asynchronous`, 'ok');
+      finishStep();
+      continue;
+    }
+
+    if (step.kind === 'leaf-across') {
+      const token = (chain?.tokens || []).find((t) => String(t.addr).toLowerCase() === String(step.token).toLowerCase());
+      if (!token?.across) { onStep(stepIndex, 'error'); throw new Error(`no Across route recorded for the step on ${chainName(step.chainId)}`); }
+      const balance = await erc20Balance(step.chainId, token.addr, account);
+      if (balance <= 0n) {
+        log(`${chainName(step.chainId)}: no ${token.symbol} balance after the claim — skipping its bridge`, 'info');
+        finishStep();
+        continue;
+      }
+      // Re-quote for the real balance: Across's outputAmount is a guarantee tied to a specific input.
+      const fresh = await quoteAcrossToken(step.chainId, token.addr, balance);
+      if (!fresh) {
+        onStep(stepIndex, 'error');
+        throw new Error(`Across no longer quotes ${token.symbol} on ${chainName(step.chainId)} — retry the claim`);
+      }
+      const [approveTx, depositTx] = buildAcrossTokenBridgeTxs({
+        account, chainId: step.chainId, spokePool: fresh.spokePool, inputToken: token.addr,
+        outputToken: fresh.outputToken, inputAmount: balance, outputAmount: fresh.outputAmount,
+        label: token.symbol,
+      });
+      await track(() => sendAndWait(approveTx));
+      await track(() => sendAndWait(depositTx));
       finishStep();
       continue;
     }
