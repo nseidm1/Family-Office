@@ -212,10 +212,11 @@ function mergeByVenft(into, from) {
 // because on a multi-chain claim "step 7 failed" is not actionable and "step 7 failed on Celo" is.
 /* Each step carries a machine-readable `kind` alongside its display `parts`, so the executor acts on
    the SAME array the panel renders instead of re-deriving what to send from a parallel structure.
-   That is the property velodrome-panel.js was built around (see its header): rows are addressed by
-   index, so anything derived twice can tick the wrong row rather than failing loudly. With `kind` on
-   the step there is nothing to derive twice — the panel reads `parts`, the executor reads `kind`,
-   and the user's chain selection filters both at once because it filters the one array.
+   That is the property the generic claim panel (claim/generic-panel.js, fed by
+   claim/velodrome-preview.js) was built around: rows are addressed by index, so anything derived
+   twice can tick the wrong row rather than failing loudly. With `kind` on the step there is nothing
+   to derive twice — the panel reads `parts`, the executor reads `kind`, and the user's chain
+   selection filters both at once because it filters the one array.
    `token` is carried on swap steps because "which token does row 7 swap?" must not be answered by
    re-walking the chain's token list in the same order and hoping it matches. */
 function buildExecSteps(chains, { mainnet }) {

@@ -1,10 +1,13 @@
 /* THE generic claim review + execution panel — one panel for every protocol.
  *
  * WHY THIS EXISTS (TASKS.md FA-003). There were two panels: `panel.js` (Aerodrome) and
- * `velodrome-panel.js`. Both render the same visual language and duplicate the same execution
+ * `velodrome-panel.js`. Both rendered the same visual language and duplicated the same execution
  * machinery, and neither could serve a protocol that claims in ONE transaction on mainnet — which is
  * four of the six protocols (Curve, Yield Basis, Clever, Concentrator). Adding a claim flow meant
  * building another panel; the point of this file is that it should mean writing a PREVIEW.
+ * Curve and Velodrome are migrated (see `curve-preview.js`, `velodrome-preview.js`, and
+ * `velodrome-panel.js` is deleted); `panel.js` (Aerodrome) is the one protocol still on its own
+ * panel, and TASKS.md #3 tracks moving it here last, deliberately, as the riskiest of the three.
  *
  * DESIGNED AGAINST CURVE FIRST, DELIBERATELY. FA-003 absorbed FA-004 precisely because designing this
  * around the two existing multi-step flows would have produced a "generic" panel that was really just
@@ -29,12 +32,27 @@
  *       route?:  string,                      // "→ swap to VELO → bridge to Optimism"
  *       items: [{ addr, symbol, amount, decimals, usd }],
  *     }],
- *     execSteps: [{ parts: [TXT|TOK], groupId?, chainLabel?, kind?, always?: boolean }],
+ *     execSteps: [{
+ *       parts: [TXT|TOK], groupId?, chainLabel?, kind?, always?: boolean,
+ *       when?(selectedIds, destinationEnabled) -> boolean,   // general form; see selectedSteps()
+ *     }],
  *     ledgerRows: [{ key, label, total?: boolean }],
- *     ledger(selectedIds) -> { [key]: string },   // the BUILDER owns every figure
+ *     ledger(selectedIds, destinationEnabled) -> { [key]: string },   // the BUILDER owns every figure
+ *     ledgerLabel?(key, destinationEnabled) -> string,   // override a row's static label; see below
  *     destination?: { label, available, enabled },
- *     summary?: { destination: string },          // wording for the success popup
+ *     summary?: {
+ *       destination: string | ((destinationEnabled) => string),      // wording for the success popup
+ *       extraDetails?(selectedIds, destinationEnabled) -> [{k, v}],   // extra success-popup rows
+ *     },
  *   }
+ *
+ * `ledgerLabel` and `summary.destination`-as-function exist because Velodrome is the first protocol
+ * with a REAL destination toggle — Curve has none, so `ledger()`'s values were the only thing that
+ * ever needed to react to a toggle. Velodrome's "Delivered" row reads "on Optimism" or "on Ethereum
+ * mainnet" depending on it, and the success popup's destination wording must agree. Both are called
+ * fresh at the moment they render (`ledgerLabel` on every `updateLedger()`, `summary.destination` and
+ * `extraDetails` once at completion), so they always reflect what the user actually toggled rather
+ * than what `showGenericClaimPanel()` was first called with.
  *
  * `execSteps` is THE ordered list: the rows are built from it and the executor is handed the very same
  * array, so index N means the same thing to both. That is `velodrome-panel.js`'s one architectural
@@ -271,8 +289,16 @@ export function showGenericClaimPanel(preview, executeClaim) {
 
     /* ---------- selection-driven derivations ---------- */
     // Derived ONCE. The rows are built from this and the executor is handed the same array.
+    /* `when` is the general form and every rule below it is a special case: a step's inclusion is a
+       function of the selection. It exists because Velodrome has one step — consolidating the VELO
+       the LEAVES bridged in — whose condition is "any LEAF is selected", which none of the fixed
+       rules can express: it is not tied to one group, and "any group at all" wrongly keeps it when
+       only the root chain is ticked and there is nothing arriving to consolidate (FA-034).
+       Protocol knowledge belongs in the preview, so the preview gets to state the condition rather
+       than the panel growing a special case per protocol. */
     function selectedSteps() {
       return (preview.execSteps || []).filter((s) => {
+        if (s.when) return s.when([...selected], destinationEnabled);
         if (s.group === 'destination') return destinationEnabled;
         if (s.always) return true;
         if (s.groupId == null) return selected.size > 0;
@@ -289,6 +315,12 @@ export function showGenericClaimPanel(preview, executeClaim) {
         // blanks implying missing data.
         cell.row.hidden = v == null;
         cell.value.textContent = v == null ? '—' : v;
+        // Only Velodrome supplies this today — its "Delivered" row reads "on Optimism" or "on
+        // Ethereum mainnet" depending on the destination toggle, which a static spec.label cannot.
+        if (preview.ledgerLabel) {
+          const label = preview.ledgerLabel(key, destinationEnabled);
+          if (label != null) cell.label.textContent = label;
+        }
       }
       updateConfirmGate();
     }
@@ -442,7 +474,9 @@ export function showGenericClaimPanel(preview, executeClaim) {
           return undefined;
         });
         title.textContent = 'Claim complete';
-        const destination = preview.summary?.destination || 'your wallet';
+        const destination = (typeof preview.summary?.destination === 'function'
+          ? preview.summary.destination(destinationEnabled)
+          : preview.summary?.destination) || 'your wallet';
         const totalCell = Object.values(ledgerRows).find((c) => c.total);
         const delivered = totalCell?.value.textContent || '';
         uiLog(SCOPE, 'complete', {
@@ -461,6 +495,7 @@ export function showGenericClaimPanel(preview, executeClaim) {
           details: [
             ...(totalCell ? [{ k: totalCell.label.textContent, v: delivered, hero: true }] : []),
             ...(ledgerRows.claimed ? [{ k: 'Claimed', v: ledgerRows.claimed.value.textContent }] : []),
+            ...(preview.summary?.extraDetails ? preview.summary.extraDetails([...selected], destinationEnabled) : []),
             { k: 'Transactions', v: String(stepRows.length) },
           ],
         });

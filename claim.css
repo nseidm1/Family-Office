@@ -812,10 +812,10 @@
 }
 .claim-preview-demo-banner strong { color: var(--accent); }
 
-/* Velodrome claim panel (claim/velodrome-panel.js). Its per-chain and destination toggles are a
-   pill checkbox PLUS a text label, so the pill keeps .claim-token-toggle (which styles the input
-   itself) and the pair needs a flex row around it. Without this the label text rendered on top of
-   the rows beneath it, because a bare <label> is inline and the pill is absolutely positioned. */
+/* The generic claim panel (claim/generic-panel.js) — group and destination toggles are a pill
+   checkbox PLUS a text label, so the pill keeps .claim-token-toggle (which styles the input itself)
+   and the pair needs a flex row around it. Without this the label text rendered on top of the rows
+   beneath it, because a bare <label> is inline and the pill is absolutely positioned. */
 .velo-toggle-row {
   display: flex;
   align-items: center;

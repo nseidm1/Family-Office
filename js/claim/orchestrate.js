@@ -7,11 +7,11 @@ import { buildDemoResults, demoActive } from '../demo/data.js';
 import { showTxSuccessPopup } from '../tx/feedback.js';
 import { deferClaimReveal, pendingClaimReveals, portfolioInFlight, portfolioResults } from '../main.js';
 import { showClaimPreviewPanel } from './panel.js';
-import { showVelodromeClaimPanel } from './velodrome-panel.js';
 import { showGenericClaimPanel } from './generic-panel.js';
 import { buildCurveClaimPreview } from './curve-preview.js';
+import { buildVelodromeGenericPreview, executeVelodromeClaimGeneric } from './velodrome-preview.js';
 import { lastVelodromePositions } from '../protocols/velodrome.js';
-import { buildDemoVelodromeClaimPreview, buildVelodromeClaimPreview, demoExecuteVelodromeClaim, demoVelodromeChains, executeVelodromeClaim } from '../velodrome/claim.js';
+import { buildDemoVelodromeClaimPreview, buildVelodromeClaimPreview, demoExecuteVelodromeClaim, demoVelodromeChains } from '../velodrome/claim.js';
 import { setPreferWalletRpc } from '../rpc-waterfall.js';
 import { isUserRejection, waitForReceipt, walletAtomicCapability } from '../tx/send.js';
 import { state } from '../core/state.js';
@@ -171,7 +171,7 @@ export async function claimToMainnetDemo(protoId) {
       log('demo: live price lookup is unavailable right now — try again shortly', 'err');
       return;
     }
-    await showVelodromeClaimPanel(buildDemoVelodromeClaimPreview(chains), demoExecuteVelodromeClaim);
+    await showGenericClaimPanel(buildVelodromeGenericPreview(buildDemoVelodromeClaimPreview(chains)), demoExecuteVelodromeClaim);
     return;
   }
   if (protoId === 'curve') {
@@ -243,7 +243,7 @@ export async function claimToMainnet(protoId) {
       log('no claimable Velodrome rewards found on any Superchain leaf chain', 'info');
       return;
     }
-    await showVelodromeClaimPanel(preview, executeVelodromeClaim);
+    await showGenericClaimPanel(buildVelodromeGenericPreview(preview), executeVelodromeClaimGeneric);
     return;
   }
   if (protoId !== 'curve') {
