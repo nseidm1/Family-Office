@@ -184,6 +184,16 @@ export function uiSnapshot() {
         // answer "how far did execution get" as precisely as the step event stream does.
         status: s.dataset.status,
       })),
+      /* The LEDGER, added with the generic panel (FA-003). Hidden rows are reported as such rather
+         than dropped: "this protocol has no bridge row" and "the bridge row is blank" look identical
+         once a row is simply missing, and the second is a bug. A snapshot that cannot tell them
+         apart cannot answer the question the panel exists to answer — does this reconcile. */
+      ledger: [...panel.querySelectorAll('.claim-preview-ledger-row')].map((r) => ({
+        label: text(r.querySelector('.claim-preview-ledger-label')),
+        value: text(r.querySelector('.claim-preview-ledger-value')),
+        hidden: r.hidden,
+        total: r.classList.contains('claim-preview-ledger-row--total'),
+      })),
     },
     // Class names verified against tx/feedback.js, not guessed — the first draft of these two
     // selectors ('.tx-step-toast', '.tx-success-popup') matched nothing at all, and a snapshot

@@ -8,6 +8,8 @@ import { showTxSuccessPopup } from '../tx/feedback.js';
 import { deferClaimReveal, pendingClaimReveals, portfolioInFlight, portfolioResults } from '../main.js';
 import { showClaimPreviewPanel } from './panel.js';
 import { showVelodromeClaimPanel } from './velodrome-panel.js';
+import { showGenericClaimPanel } from './generic-panel.js';
+import { buildCurveClaimPreview } from './curve-preview.js';
 import { lastVelodromePositions } from '../protocols/velodrome.js';
 import { buildDemoVelodromeClaimPreview, buildVelodromeClaimPreview, demoExecuteVelodromeClaim, demoVelodromeChains, executeVelodromeClaim } from '../velodrome/claim.js';
 import { setPreferWalletRpc } from '../rpc-waterfall.js';
@@ -174,31 +176,21 @@ export async function claimToMainnetDemo(protoId) {
   }
   if (protoId === 'curve') {
     uiLog('claim', 'curve claim started', { demo: true });
-    setClaimBusy('curve', true);
-    setClaimProgress('curve', null, 'Waiting for wallet confirmation…');
-    await new Promise((r) => setTimeout(r, 700 + Math.random() * 500));
-    setClaimProgress('curve', null, 'Waiting for confirmation…');
-    await new Promise((r) => setTimeout(r, 900 + Math.random() * 700));
-    setClaimBusy('curve', false);
-    // Same demo veCRV figure the card itself shows — buildDemoResults() is cheap/synchronous
-    // and rebuilding it here (rather than caching) keeps this in step with whatever the card
-    // is currently displaying, same as the real path reading the card's own last-known row.
+    /* Demo mode drives the REAL panel with the REAL preview builder — only the sending is synthetic,
+       which is the rule claimToMainnetDemo()'s own comment sets out. Curve's demo used to be a pair
+       of sleeps followed by a success popup, i.e. a parallel code path that could not have caught a
+       panel regression; now a demo run exercises exactly what a wallet run renders. */
+    // Same demo veCRV figure the card itself shows — buildDemoResults() is cheap/synchronous and
+    // rebuilding it here keeps this in step with whatever the card is currently displaying.
     const veCrvSub = buildDemoResults().curve.subsections.find((s) => s.id === 'vecrv');
-    // Curve's claim always pays out in crvUSD directly to Ethereum mainnet — no selection to
-    // branch on (unlike Aerodrome), so the native row is always this one exact figure.
-    const nativeDelivered = veCrvSub.rows.find((r) => r.k === 'Claimable crvUSD')?.v || veCrvSub.claimSummary;
-    uiLog('claim', 'curve claim complete', {
-      demo: true,
-      delivered: money(veCrvSub.claimSummary),
-      amount: money(nativeDelivered),
-    });
-    showTxSuccessPopup({
-      title: 'Claim complete — funds delivered',
-      sub: `Simulated: ${nativeDelivered} would now be in your wallet on Ethereum mainnet.`,
-      details: [
-        { k: 'Delivered on mainnet', v: veCrvSub.claimSummary, hero: true },
-        { k: 'Amount', v: nativeDelivered },
-      ],
+    const preview = buildCurveClaimPreview(veCrvSub, { demo: true });
+    await showGenericClaimPanel(preview, async (_execPreview, onStep) => {
+      onStep?.(0, 'active');
+      // Plain setTimeout, like every other simulated step — see CLAIM's note on Chrome throttling a
+      // backgrounded tab, which makes this appear to stall rather than hang.
+      await new Promise((r) => setTimeout(r, 900 + Math.random() * 700));
+      onStep?.(0, 'done');
+      uiLog('claim', 'curve claim complete', { demo: true, delivered: money(veCrvSub.claimSummary) });
     });
     return;
   }
@@ -267,16 +259,39 @@ export async function claimToMainnet(protoId) {
   // where a slow or stuck claim actually is, which is exactly why they matter more here than
   // they do on the flow that has a visible checklist.
   uiLog('claim', 'curve claim started', { demo: false, chain: chainName(state.chainId) });
-  /* Curve's gate sits here rather than on a confirm button because Curve HAS no preview panel —
-     the button is the confirmation. Placed before switchChain() on purpose: prompting the user
-     to move their wallet to mainnet for a transaction this build will then refuse to send would
-     be a pointless, confusing side effect. */
-  if (claimBlocked(false)) {
-    log(RELEASE_NOTICE, 'info');
-    uiLog('claim', 'blocked by release gate', { protocol: 'curve', label: RELEASE_LABEL });
-    flashClaimError('curve', RELEASE_BTN_LABEL);
+
+  /* CURVE NOW HAS A PREVIEW PANEL (FA-003), which moves its release gate. It used to be enforced
+     right here, because "Curve has no panel, so the button IS the confirmation" — that is no longer
+     true, and leaving the gate here would refuse before the panel ever opened, hiding the review
+     screen that is the most valuable part of a gated build. The gate now lives where every other
+     protocol's does: on the panel's confirm button, plus the executor's own refusal below.
+     What must NOT come back is a gate before switchChain() — but nothing switches chains until the
+     user confirms now, so the ordering problem that motivated it is gone too. */
+  const veCrvSub = portfolioResults?.curve?.subsections?.find((s) => s.id === 'vecrv');
+  const preview = buildCurveClaimPreview(veCrvSub);
+  if (!preview) {
+    // The success popup used to degrade silently to "your crvUSD" when this snapshot was missing.
+    // With a review panel there is nothing honest to review, so it refuses instead of showing a
+    // panel with a blank figure in it.
+    uiWarn('claim', 'curve card snapshot missing — cannot build a review', { haveSubsection: !!veCrvSub });
+    log('No claimable veCRV figure to review yet — refresh the portfolio and try again.', 'info');
     return;
   }
+  const confirmed = await showGenericClaimPanel(preview, executeCurveClaim);
+  uiLog('claim', 'curve panel closed', { confirmed });
+}
+
+/* Curve's executor, in the shape the generic panel expects: (execPreview, onStep). One step, so the
+   callback is called with index 0 — the same contract a twelve-step Aerodrome run uses, which is what
+   makes the panel indifferent to the length of the list. */
+async function executeCurveClaim(execPreview, onStep) {
+  /* Last-resort refusal, on its own authority rather than trusting a disabled button layers away —
+     the third enforcement point release.js describes. */
+  if (claimBlocked(false)) {
+    uiLog('claim', 'blocked by release gate', { protocol: 'curve', label: RELEASE_LABEL });
+    throw new Error(RELEASE_NOTICE);
+  }
+  const { nativeAmount, claimedUsd } = execPreview.curve || {};
   setClaimBusy('curve', true);
   try {
     if (state.chainId !== ETH_MAINNET) {
@@ -286,18 +301,10 @@ export async function claimToMainnet(protoId) {
       await switchChain(ETH_MAINNET);
     }
     setClaimProgress('curve', null, 'Waiting for wallet confirmation…');
+    // The one step goes active before the wallet is prompted, so the row is spinning while the user
+    // is deciding — the same beat every other flow has.
+    onStep?.(0, 'active');
     const data = CURVE.CLAIM + encodeAddress(state.account);
-    // Captured from the portfolio card's own last-known figure for this exact subsection (the
-    // veCRV "Claimable crvUSD" row) — the same number the user just saw before clicking Claim —
-    // rather than re-reading FeeDistributor.claim() again here, which would cost a second RPC
-    // round trip only to show a figure that (barring a claim landing in between) is the same one.
-    const veCrvSub = portfolioResults?.curve?.subsections?.find((s) => s.id === 'vecrv');
-    const claimedRow = veCrvSub?.rows?.find((r) => r.k === 'Claimable crvUSD');
-    // The success popup's figures come from the CARD's last-known state, not a fresh read, so if
-    // that snapshot is missing the popup silently degrades to a vague "your crvUSD". Worth a
-    // warning: the claim itself is fine, but the confirmation the user is shown is weaker than
-    // intended, and nothing else would ever reveal that.
-    if (!claimedRow) uiWarn('claim', 'curve card snapshot missing — success popup will show a generic amount', { haveSubsection: !!veCrvSub });
     log('sending veCRV claim (crvUSD, Ethereum mainnet)...', 'info');
     const txHash = await rpc('eth_sendTransaction', [{ from: state.account, to: CURVE.feeDistributor, data }]);
     log(`claim transaction sent: ${txHash}, waiting for confirmation...`, 'info');
@@ -311,28 +318,23 @@ export async function claimToMainnet(protoId) {
     // gated on a real confirmed receipt (see waitForReceipt/showTxSuccessPopup's own comments).
     await waitForReceipt(txHash, ETH_MAINNET);
     log(`claim transaction confirmed: ${txHash}`, 'ok');
-    const nativeDelivered = claimedRow?.v || veCrvSub?.claimSummary || 'your crvUSD';
+    onStep?.(0, 'done');
     uiLog('claim', 'curve claim complete', {
       demo: false,
       tx: addr(txHash),
-      delivered: money(veCrvSub?.claimSummary),
-      amount: money(nativeDelivered),
+      delivered: money(claimedUsd),
+      amount: money(nativeAmount),
     });
-    showTxSuccessPopup({
-      title: 'Claim complete — funds delivered',
-      sub: `${nativeDelivered} just landed in your wallet on Ethereum mainnet.`,
-      details: [
-        { k: 'Delivered on mainnet', v: veCrvSub?.claimSummary || 'crvUSD', hero: true },
-        { k: 'Amount', v: nativeDelivered },
-        { k: 'Transaction', v: short(txHash), mono: true },
-      ],
-    });
+    /* NO success popup here any more — the panel raises it on resolve, from the same ledger figures
+       the user just approved. Raising one from both places showed two popups for one claim. */
   } catch (err) {
     logErr('veCRV claim failed', err);
-    // Curve has no per-step UI to show a failure against, and setClaimBusy() below simply hides
-    // the popover — so without this the entire visible trace of a failed claim is one line in
-    // the on-page log panel.
+    onStep?.(0, 'error');
     uiWarn('claim', 'curve claim failed', { error: err?.message, rejected: isUserRejection(err) });
+    /* RETHROWN, unlike before. Swallowing it used to be the only sane option because Curve had no
+       per-step UI to show a failure against; now the panel does, and it stays open naming the step
+       that broke — but only if the rejection reaches it. */
+    throw err;
   } finally {
     setClaimBusy('curve', false);
   }
