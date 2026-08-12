@@ -1,0 +1,35 @@
+# Response headers for header-capable static hosts (Cloudflare Pages, Netlify — both read a
+# `_headers` file at the root of the PUBLISHED directory, which is what `docs/` is).
+#
+# WHY THIS FILE EXISTS. The app's CSP lives in a <meta> tag because GitHub Pages cannot set response
+# headers at all — and `frame-ancestors` and `X-Frame-Options` are header-ONLY directives, ignored
+# entirely in a meta CSP. That is the gap CLAUDE.md describes as needing "a real host or proxy in
+# front": until now the clickjacking defence has been `docs/js/framebust.js` plus a CSS
+# `display: none`, which works but is a workaround for a header we simply could not send.
+# On a host that reads this file, the header-based defence finally exists.
+#
+# IT DOES NOT REPLACE THE EXISTING DEFENCE, and must never be treated as doing so. `framebust.js`
+# and the `html[data-framed]` CSS suppression stay exactly as they are: this file has no effect on
+# GitHub Pages or `node server.js`, so removing the in-page defence would leave those two deployments
+# completely unprotected. CLAUDE.md's rule stands — never make the CSS suppression conditional.
+#
+# The CSP below carries ONLY frame-ancestors. That is deliberate: multiple CSP policies are each
+# enforced independently rather than merged, so a header policy listing one directive restricts framing
+# and nothing else, leaving index.html's full meta CSP (which enumerates every RPC host in
+# connect-src) as the single place script/connect policy is maintained. Duplicating the whole policy
+# here would create a second list to keep in sync with PUBLIC_RPCS, and `tools/verify-ui.mjs` asserts
+# that agreement against the meta tag — a drifting copy in this file would silently block RPC
+# endpoints and look like an endpoint failure.
+
+/*
+  Content-Security-Policy: frame-ancestors 'none'
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  # No path or query from this app should ever leak to a third party via Referer. The app talks to
+  # public RPC endpoints and DefiLlama with the wallet address in flight; there is no reason for any
+  # of them to receive a referrer.
+  Referrer-Policy: no-referrer
+  # Nothing here uses a camera, microphone, geolocation or payment handler. Denying them outright
+  # means a future dependency cannot quietly start asking.
+  Permissions-Policy: accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()
+  Cross-Origin-Opener-Policy: same-origin

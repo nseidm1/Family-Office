@@ -1,0 +1,887 @@
+/* Claim-flow styling only — the claim-to-mainnet preview panel, transaction success popup,
+   per-step toasts, and demo-mode watermark/banner. Split out of styles.css (which keeps all
+   base/card/layout styling) so a session editing one concern doesn't load the other; loaded
+   via its own <link> AFTER styles.css in index.html, preserving the original cascade order. */
+
+/* ---------- claim-to-mainnet preview panel ---------- */
+
+/* Transparent by default (side-docked layout) — only dimmed when the panel
+   falls back to a centered modal, so the side-docked case never darkens the
+   rest of the page it's sitting next to. */
+.claim-preview-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+}
+
+.claim-preview-backdrop--dim {
+  background: var(--backdrop);
+}
+
+.claim-preview-panel {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 12px 32px var(--shadow);
+  /* Declared as a custom property because layoutPanel() in app.js reads it to decide whether
+     the panel fits beside the Portfolio card. Hardcoding the number in both places let them
+     drift once already: the width grew 360 -> 400 here while the fit check still assumed 360,
+     so the panel docked when it did not fit and overflowed the viewport by 40px. */
+  width: var(--claim-panel-width);
+  max-width: calc(100vw - 40px);
+  max-height: calc(100vh - 40px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.claim-preview-panel--modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.claim-preview-header {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* Shown briefly when × is clicked while a transaction is actively pending (see tryDismiss() in
+   app.js) — same absolute-anchored-under-the-header-right-edge positioning as .dropdown-menu/
+   .claim-progress-popover elsewhere in this file, just anchored to the header instead of a
+   claim-menu-wrap. */
+.claim-preview-close-blocked {
+  position: absolute;
+  top: 100%;
+  right: 20px;
+  margin-top: 8px;
+  max-width: 220px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-size: 12.5px;
+  color: var(--text);
+  box-shadow: 0 12px 32px var(--shadow);
+  z-index: 20;
+}
+
+.claim-preview-header h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.claim-preview-close {
+  border: none;
+  background: transparent;
+  padding: 2px 6px;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--muted);
+}
+
+.claim-preview-close:hover { color: var(--text); border-color: transparent; }
+
+/* Side-by-side review (.claim-preview-body) + numbered transaction list (.claim-preview-steps-col)
+   — see the `columns` wrapper in showClaimPreviewPanel(). Both panes scroll independently within
+   whatever height layoutPanel()'s max-height leaves for them; min-height: 0 is required on a flex
+   child for that inner scroll to actually kick in instead of the child forcing the row taller. */
+.claim-preview-columns {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.claim-preview-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  padding: 16px 20px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.claim-preview-steps-col {
+  flex: 0 0 260px;
+  width: 260px;
+  min-height: 0;
+  border-left: 1px solid var(--border);
+  padding: 16px 16px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Below this, a 260px side column would crowd the review pane too much — stack them instead,
+   same as the panel already falls back to a centered modal (see layoutPanel()) rather than
+   docking beside the portfolio card when there isn't room. */
+@media (max-width: 760px) {
+  .claim-preview-columns { flex-direction: column; overflow-y: auto; }
+  .claim-preview-body { overflow-y: visible; }
+  .claim-preview-steps-col {
+    flex: 0 0 auto;
+    width: auto;
+    border-left: none;
+    border-top: 1px solid var(--border);
+    overflow-y: visible;
+  }
+}
+
+.claim-preview-section-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+  margin: 14px 0 4px;
+}
+
+.claim-preview-section-label:first-child { margin-top: 0; }
+
+.claim-preview-step {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  padding: 8px 2px;
+  font-size: 13.5px;
+  line-height: 1.4;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.claim-preview-step:last-child { border-bottom: none; }
+
+/* A token the network never answered for — distinct from a permanent skip (plain --muted text
+   above): this is pending, not final, and it's what blocks Confirm (see the retry/warn note in
+   showClaimPreviewPanel). --err would read as "this failed for good"; --accent-2 reads as
+   "still working on this" without the alarm of red. */
+.claim-preview-step--unresolved .claim-preview-step-note { color: var(--accent-2); }
+
+/* Shown in place of the note + Retry button while a row-level retry is in flight (see
+   retryUnresolvedRow() in app.js) — same right-hand position the note/button occupied
+   (margin-left: auto), so the address on the left doesn't jump when the row's content swaps.
+   .spinner already sets vertical-align: middle; the row's own align-items: baseline is what
+   actually keeps it roughly level with the address text, the same alignment every other inline
+   spinner in this app relies on (e.g. the Claim button's own busy state). */
+.claim-preview-row-spinner { margin-left: auto; }
+
+/* The execution view — replaces the review body entirely once Confirm is clicked (see
+   enterExecutionView() in app.js). One row per REAL transaction, numbered top to bottom in
+   send order, each row's icon filled in live as executeAerodromeClaim() reports progress
+   through it: empty while pending, a spinner while that transaction is out for signing/
+   confirmation, a checkmark once confirmed, an X if it's the one that failed. */
+.claim-exec-step {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 2px;
+  font-size: 13.5px;
+  border-bottom: 1px solid var(--border-soft);
+  opacity: 0.55;
+  transition: opacity 0.15s;
+}
+.claim-exec-step:last-child { border-bottom: none; }
+/* Entering/leaving rows (see expandExecStepRow()/collapseAndRemoveExecStepRow() in app.js)
+   animate via the Web Animations API — same technique setAccordionOpen() already uses for the
+   protocol cards — rather than a CSS transition class, so this just needs overflow:hidden while
+   that JS-driven max-height animation is in flight (set/cleared by those functions themselves). */
+/* Pending steps are dimmed (opacity above) so the list reads as a queue; the step currently
+   being sent/confirmed and any already-done step stand out at full opacity. */
+.claim-exec-step[data-status="active"],
+.claim-exec-step[data-status="done"],
+.claim-exec-step[data-status="error"],
+.claim-exec-step[data-status="rejected"] { opacity: 1; }
+
+.claim-exec-step-num {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 650;
+  font-family: var(--mono);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+/* The number badge itself doubles as a secondary status cue (border/text color) alongside the
+   icon on the row's right, so status is legible even at a glance where the icon might not have
+   rendered yet (e.g. a spinner mid-frame). */
+.claim-exec-step[data-status="active"] .claim-exec-step-num { border-color: var(--accent); color: var(--accent); }
+.claim-exec-step[data-status="done"] .claim-exec-step-num { border-color: var(--ok); color: var(--ok); }
+.claim-exec-step[data-status="error"] .claim-exec-step-num { border-color: var(--err); color: var(--err); }
+
+.claim-exec-step-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: break-word;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+/* A token reference inside a step label (see buildExecutionStepRow()) — the coin's name with
+   its icon to the right, inline with the surrounding sentence text. */
+.claim-exec-token {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 600;
+}
+
+.claim-exec-token-icon {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.claim-exec-step-icon {
+  flex: 0 0 auto;
+  min-width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  line-height: 1;
+}
+.claim-exec-step[data-status="done"] .claim-exec-step-icon { color: var(--ok); }
+.claim-exec-step[data-status="error"] .claim-exec-step-icon { color: var(--err); }
+/* Same "still working on it, not final" color the unresolved-token review row already uses for
+   the same reason — a rejection isn't a failure, just something to try again. */
+.claim-exec-step[data-status="rejected"] .claim-exec-step-num { border-color: var(--accent-2); color: var(--accent-2); }
+
+.claim-preview-step > span:first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+
+.claim-preview-step-note {
+  flex: 0 1 auto;
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: right;
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+
+/* Claimed-token list — symbol | amount | USD, so the Claim section shows WHAT is
+   being collected, not just the transaction labels. Three aligned columns rather
+   than .claim-preview-step's label/note pair, because the amount and its dollar
+   value are two separate figures that each need to line up down their own column.
+   `display: contents` keeps the rows as direct participants in the body's flex
+   column, so their spacing matches every other row in the panel. */
+.claim-preview-token-list { display: contents; }
+
+/* Every column is minmax(0, …) so a long symbol or a high-precision amount wraps
+   inside the 400px panel instead of widening it — the panel must never introduce
+   horizontal scrolling in either the side-docked or modal layout. */
+.claim-preview-token-row {
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(0, auto) minmax(0, 1fr) minmax(0, auto);
+  align-items: center;
+  gap: 2px 10px;
+  padding: 7px 2px;
+  font-size: 13.5px;
+  line-height: 1.4;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+/* The "Total claimed" row directly below carries its own, stronger top rule — without
+   this the last token row's soft rule would sit right against it as a double line. */
+.claim-preview-token-row:last-child { border-bottom: none; }
+
+.claim-preview-token-symbol {
+  font-weight: 550;
+  overflow-wrap: anywhere;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.claim-preview-token-icon {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.claim-preview-token-amount {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--muted);
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.claim-preview-token-usd {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+/* Sliding pill switch (Material/Android style) for selecting which claimable tokens and which
+   optional legs (bridge, crvUSD swap) are included — used for BOTH .claim-preview-token-row and
+   stepToggle()'s rows (see their comments in showClaimPreviewPanel), same shared class, same
+   markup (a single <input type=checkbox>, no wrapper element): appearance:none turns the input
+   itself into the track, and ::after is the thumb, so nothing upstream that reads/sets
+   `.checked` or listens for 'change' needed to change at all. */
+.claim-token-toggle {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 36px;
+  height: 20px;
+  border: none;
+  border-radius: 999px;
+  background: var(--border);
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+  transition: background-color 0.2s ease;
+}
+
+.claim-token-toggle::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  transition: left 0.18s cubic-bezier(.4, 0, .2, 1);
+}
+
+.claim-token-toggle:hover {
+  background: var(--border-hover);
+}
+
+.claim-token-toggle:checked {
+  background: var(--ok);
+}
+
+.claim-token-toggle:checked:hover {
+  background: var(--ok);
+  filter: brightness(1.08);
+}
+
+.claim-token-toggle:checked::after {
+  left: 18px;
+}
+
+.claim-token-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .claim-token-toggle, .claim-token-toggle::after { transition: none; }
+}
+
+/* Reconciliation ledger — one line per reason the delivered crvUSD differs from the
+   claimed dollar figure. Label (plus an optional explanatory second line) left,
+   a single figure right. */
+.claim-preview-ledger-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, auto);
+  align-items: baseline;
+  gap: 2px 12px;
+  padding: 7px 2px;
+  font-size: 13.5px;
+  line-height: 1.4;
+}
+
+/* These `display` declarations otherwise beat the UA stylesheet's `[hidden] { display: none }`
+   at equal specificity, so the panel's `row.hidden = true` / `sub.hidden = true` toggles would
+   silently do nothing — leaving e.g. a "Skipped — not consolidated" line with an empty value
+   cell even when nothing was skipped (confirmed live). Same gotcha the .demo-badge[hidden] and
+   .cancel-btn[hidden] rules above document; every new rule here that sets `display` on a
+   JS-toggled element needs its own guard. */
+.claim-preview-ledger-row[hidden],
+.claim-preview-ledger-label[hidden] { display: none; }
+
+.claim-preview-ledger-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.claim-preview-ledger-sub {
+  font-size: 11.5px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.claim-preview-ledger-value {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+  transition: opacity 0.3s ease, color 0.3s ease;
+}
+
+/* Highlight pulse on the "Delivered on mainnet" row when its value updates — draws the eye
+   to the final result of the user's bridge/curve toggle choices. */
+@keyframes claim-preview-delivered-pulse {
+  0% { background-color: transparent; }
+  50% { background-color: var(--accent-2, rgba(255, 200, 0, 0.15)); }
+  100% { background-color: transparent; }
+}
+
+.claim-preview-ledger-row--delivered-pulse {
+  animation: claim-preview-delivered-pulse 0.6s ease-out;
+}
+
+.claim-preview-ledger-row--total {
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-weight: 600;
+}
+
+.claim-preview-ledger-row--net {
+  margin-top: 2px;
+  padding-top: 9px;
+  border-top: 1px solid var(--border-soft);
+  color: var(--muted);
+}
+
+.claim-preview-ledger-row--down .claim-preview-ledger-value { color: var(--err); }
+.claim-preview-ledger-row--up .claim-preview-ledger-value { color: var(--ok); }
+
+/* A figure that genuinely isn't available (a quote that failed, a token with no
+   listed price) — deliberately styled as prose, not as a number, so it can never
+   be mistaken for a real zero. */
+.claim-preview-value-na {
+  color: var(--muted);
+  font-style: italic;
+  font-size: 12px;
+  font-variant-numeric: normal;
+}
+
+.claim-preview-note {
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.45;
+  padding: 6px 2px 2px;
+  overflow-wrap: anywhere;
+}
+
+.claim-preview-note--warn { color: var(--err); }
+
+.claim-preview-across-badge {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  flex-shrink: 0;
+  align-self: center;
+}
+
+.claim-preview-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--border);
+}
+
+.btn-secondary {
+  background: var(--bg-elev);
+}
+
+.btn-primary {
+  border: none;
+  background: linear-gradient(135deg, var(--accent), #5b8cff);
+  color: #fff;
+  font-weight: 600;
+}
+
+/* Retry button for a single unresolved-token row in the claim preview panel (see
+   showClaimPreviewPanel's consolidate-section loop) — sits inline on the row it fixes, not in
+   the footer, since retry is prompted by a specific line item. Uses the SAME tri-color gradient
+   as .claim-btn and .claim-progress-fill — the app's "claim action" color language — rather than
+   .btn-primary's plain two-color one, so retrying reads as continuing the claim action itself
+   rather than a generic confirmation. Kept as real button chrome (unlike .claim-btn's bare
+   gradient-text treatment) since it's the only way to unblock Confirm; a text-only link would be
+   easy to overlook exactly when missing it matters most. Confirm itself stays disabled with its
+   own explanatory note (in the footer) regardless of how many of these rows exist. */
+.claim-preview-retry-btn {
+  border: none;
+  background: linear-gradient(100deg, var(--accent) 0%, var(--aerodrome) 60%, var(--velodrome) 100%);
+  color: #fff;
+  font-weight: 650;
+  filter: drop-shadow(0 1px 6px rgba(124, 92, 255, 0.35));
+  transition: filter 0.15s;
+}
+.claim-preview-retry-btn:hover:not(:disabled) { filter: drop-shadow(0 1px 10px rgba(124, 92, 255, 0.55)); }
+
+/* Sized down from the base button rule's 9px/14px padding to sit inline on a
+   .claim-preview-step row alongside its label text and note, rather than dominating it the way
+   a full-size footer-style button would. */
+.claim-preview-retry-btn--sm {
+  padding: 4px 10px;
+  font-size: 12px;
+  border-radius: 7px;
+  flex: 0 0 auto;
+}
+
+.empty { color: var(--muted); padding: 16px 8px; font-size: 14px; text-align: center; }
+
+/* ---------- transaction success popup ---------- */
+/* Shown once a real transaction (Curve's single claim, or the last leg of Aerodrome's
+   claim-to-mainnet flow) is SENT AND CONFIRMED — never on broadcast alone, see waitForReceipt's
+   own comment on why sendAndWait/eth_sendTransaction resolving isn't "done". A separate overlay
+   from .claim-preview-panel rather than a state within it: the claim panel's own job ends the
+   moment sending finishes (see enterExecutionView's 'Claim complete' + cleanup(true)), and this
+   is deliberately a distinct, celebratory beat afterward rather than one more state of that
+   already-dense review UI. */
+.tx-success-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: var(--backdrop);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  opacity: 0;
+  transition: opacity 0.22s ease;
+}
+.tx-success-backdrop.is-open { opacity: 1; }
+
+.tx-success-confetti {
+  position: fixed;
+  inset: 0;
+  z-index: 91;
+  pointer-events: none;
+}
+
+.tx-success-card {
+  position: relative;
+  z-index: 92;
+  width: 100%;
+  max-width: 420px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  box-shadow: 0 24px 70px var(--shadow);
+  padding: 30px 28px 24px;
+  text-align: center;
+  transform: translateY(10px) scale(0.97);
+  opacity: 0;
+  transition: transform 0.28s cubic-bezier(.2,.8,.2,1), opacity 0.28s ease;
+}
+.tx-success-backdrop.is-open .tx-success-card {
+  transform: translateY(0) scale(1);
+  opacity: 1;
+}
+
+.tx-success-icon {
+  width: 60px;
+  height: 60px;
+  margin: 0 auto 16px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, var(--ok), #22d3ee);
+  box-shadow: 0 0 0 8px rgba(52, 211, 153, 0.12);
+}
+.tx-success-icon svg { width: 28px; height: 28px; }
+.tx-success-icon path {
+  fill: none;
+  stroke: #06110d;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 28;
+  stroke-dashoffset: 28;
+  animation: tx-success-check 0.45s 0.15s cubic-bezier(.4,0,.2,1) forwards;
+}
+@keyframes tx-success-check { to { stroke-dashoffset: 0; } }
+
+.tx-success-title {
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0 0 6px;
+}
+.tx-success-sub {
+  font-size: 13.5px;
+  color: var(--muted);
+  margin: 0 0 20px;
+  line-height: 1.5;
+}
+
+.tx-success-details {
+  text-align: left;
+  background: var(--surface-tint);
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  padding: 4px 16px;
+  margin-bottom: 22px;
+}
+.tx-success-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-soft);
+  font-size: 13px;
+}
+.tx-success-row:last-child { border-bottom: none; }
+.tx-success-row .k { color: var(--muted); }
+.tx-success-row .v {
+  color: var(--text);
+  font-weight: 600;
+  text-align: right;
+  word-break: break-word;
+}
+.tx-success-row .v.mono { font-family: var(--mono); font-size: 12px; font-weight: 500; }
+
+/* The delivered-amount row — the headline fact every call site puts first (see
+   showTxSuccessPopup's `hero` flag). Larger, gradient-filled, and given its own bottom rule so
+   it visually separates from the supporting rows below it rather than reading as one line among
+   equals. */
+.tx-success-row--hero {
+  padding: 12px 0 14px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.tx-success-row--hero .k { font-weight: 600; color: var(--text); }
+.tx-success-row--hero .v {
+  font-size: 17px;
+  font-weight: 750;
+  background: linear-gradient(100deg, var(--accent) 0%, var(--aerodrome) 60%, var(--velodrome) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.tx-success-cta {
+  width: 100%;
+  padding: 12px;
+  border-radius: 10px;
+  border: none;
+  font-size: 14px;
+  font-weight: 650;
+  cursor: pointer;
+  color: #fff;
+  background: linear-gradient(100deg, var(--accent) 0%, var(--aerodrome) 60%, var(--velodrome) 100%);
+  filter: drop-shadow(0 1px 6px rgba(124, 92, 255, 0.35));
+  transition: filter 0.15s, transform 0.1s;
+}
+.tx-success-cta:hover { filter: drop-shadow(0 1px 12px rgba(124, 92, 255, 0.55)); }
+.tx-success-cta:active { transform: scale(0.98); }
+
+@media (prefers-reduced-motion: reduce) {
+  .tx-success-backdrop, .tx-success-card, .tx-success-icon path { transition: none; animation: none; }
+  .tx-success-backdrop.is-open .tx-success-card { transform: none; }
+  .tx-success-icon path { stroke-dashoffset: 0; }
+}
+
+/* ---------- intermediate transaction toast ---------- */
+/* The lightweight sibling of .tx-success-* — shown after each transaction EXCEPT the last one
+   in a multi-step flow (claim, then N approve/swap legs, then bridge), where the full modal+
+   confetti treatment fires once, for the flow as a whole. A blocking modal after every one of
+   what can be 8-10 legs would force a dismiss-click between each signature; this is a brief,
+   non-blocking, self-dismissing acknowledgement instead — stacks upward so several firing in
+   quick succession (demo mode's simulated flow runs much faster than real confirmations) are
+   all still readable rather than overwriting one another. */
+.tx-toast {
+  position: fixed;
+  right: 20px;
+  z-index: 88;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 300px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 10px 30px var(--shadow);
+  padding: 12px 16px;
+  transform: translateX(120%);
+  transition: transform 0.24s cubic-bezier(.2,.8,.2,1), bottom 0.2s ease;
+}
+.tx-toast.is-open { transform: translateX(0); }
+
+.tx-toast-icon {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--ok);
+  display: grid;
+  place-items: center;
+}
+.tx-toast-icon svg { width: 12px; height: 12px; }
+.tx-toast-icon path {
+  fill: none;
+  stroke: #06110d;
+  stroke-width: 3.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.tx-toast-text { min-width: 0; }
+.tx-toast-title {
+  font-size: 12.5px;
+  font-weight: 650;
+  color: var(--text);
+  margin: 0 0 2px;
+}
+.tx-toast-sub {
+  font-size: 11.5px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tx-toast { transition: none; }
+}
+
+/* ---------- demo mode: claim-to-mainnet panel ---------- */
+/* This exact panel is opened by BOTH the real claim flow and demo mode's simulated one (see
+   claimToMainnetDemo()) — same numbers-look-real review, same "Confirm and proceed" button — so
+   demo mode needs something explicit here, not just the "DEMO PORTFOLIO" badge on the page
+   behind this modal, which is easy to have stopped noticing several screens earlier. Watermark
+   for an at-a-glance ambient signal, banner for the stated-in-words one; see showClaimPreviewPanel.*/
+.claim-preview-panel--demo { position: relative; }
+
+.claim-preview-demo-watermark {
+  position: absolute;
+  inset: 0;
+  /* Negative z-index sinks this below the panel's static header/columns/footer content (CSS2.1
+     painting order: negative-z-index positioned descendants paint before in-flow non-positioned
+     ones) while still painting ABOVE the panel's own background — visible as a texture on the
+     panel surface, not hidden behind it. */
+  z-index: -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 30px 44px;
+  padding: 24px;
+  overflow: hidden;
+  pointer-events: none;
+  transform: rotate(-22deg) scale(1.5);
+  transform-origin: center;
+}
+.claim-preview-demo-watermark span {
+  font-size: 21px;
+  font-weight: 800;
+  letter-spacing: 2.5px;
+  color: var(--accent);
+  opacity: 0.09;
+  white-space: nowrap;
+}
+:root[data-theme="light"] .claim-preview-demo-watermark span { opacity: 0.07; }
+
+.claim-preview-demo-banner {
+  margin: 14px 20px 0;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: linear-gradient(100deg, var(--glow-accent), var(--glow-aerodrome));
+  border: 1px solid var(--accent2-soft);
+  color: var(--text);
+  font-size: 12.5px;
+  line-height: 1.5;
+  position: relative;
+  z-index: 1;
+}
+.claim-preview-demo-banner strong { color: var(--accent); }
+
+/* Velodrome claim panel (claim/velodrome-panel.js). Its per-chain and destination toggles are a
+   pill checkbox PLUS a text label, so the pill keeps .claim-token-toggle (which styles the input
+   itself) and the pair needs a flex row around it. Without this the label text rendered on top of
+   the rows beneath it, because a bare <label> is inline and the pill is absolutely positioned. */
+.velo-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  margin-bottom: 0.35rem;
+}
+
+.velo-toggle-row span {
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+/* Chain chip on an execution step — distinguishes "which chain" from the token badges beside it,
+   which matters because every Velodrome step names a chain and most also name a token. */
+.claim-exec-step .claim-exec-token--chain {
+  background: var(--border);
+  font-weight: 600;
+  margin-right: 0.35rem;
+}
+
+/* Right column: the ledger and the destination toggle stay put, and ONLY the transaction list
+   scrolls. Scrolling the whole column pushed the ledger — the figures the user is actually
+   approving — off screen on a short viewport, and during execution it also meant the running step
+   could scroll away together with its context. min-height:0 is required: a flex child defaults to
+   min-height:auto and would refuse to shrink, so the list would grow the panel instead of
+   scrolling inside it. */
+.velo-right-col {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.velo-steps-scroll {
+  overflow-y: auto;
+  min-height: 0;
+  flex: 1 1 auto;
+  /* Deep enough to show several steps at once, capped so a 13-step multi-chain claim cannot
+     outgrow the panel. scrollIntoView({block:'nearest'}) on the active step scrolls THIS box. */
+  max-height: 38vh;
+  padding-right: 0.25rem;
+}
+
+/* Velodrome's panel is wider than Aerodrome's and shares the width between its two columns.
+   Scoped to .velo-claim-panel rather than changing .claim-preview-panel, because the Aerodrome
+   panel's width is read back by layoutPanel() via --claim-panel-width to decide whether it can
+   dock beside the Portfolio card; widening that globally would break that fit check. This panel
+   is always a modal, so it has no such constraint.
+   Reason for the extra width: a Velodrome claim shows a chain-grouped token list AND a four-row
+   ledger AND a step list whose rows carry both a chain chip and a token badge — at 400px the
+   right column had dead space beside it while its own rows wrapped. */
+.velo-claim-panel {
+  width: min(900px, calc(100vw - 40px));
+}
+
+.velo-claim-panel .claim-preview-columns {
+  gap: 1.5rem;
+}
+
+/* flex-basis 0 so the two columns split the panel by their grow factors rather than by content
+   width; min-width 0 so a long token symbol cannot force a column wider than its share. */
+.velo-claim-panel .claim-preview-steps-col {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.velo-claim-panel .velo-right-col {
+  flex: 1.1 1 0;
+}

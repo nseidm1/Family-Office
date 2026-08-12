@@ -1,0 +1,1237 @@
+/* Theme: dark is the default palette (no data-theme attribute, or
+   data-theme="dark"). Every color used anywhere in this file is a custom
+   property here so the `:root[data-theme="light"]` block below can re-theme
+   the whole page just by overriding these — no other selector should ever
+   hardcode a color that depends on light vs. dark. See app.js's "theme"
+   section for how `data-theme` gets set (stored choice, else OS
+   prefers-color-scheme). */
+:root {
+  /* Lifted one step off pure near-black (was #07070b) — a deliberate, modest brighten so the
+     page reads as dark-premium rather than a void, without touching contrast ratios anywhere
+     that matters (--text/--muted/--border are unchanged; this is the canvas underneath them). */
+  --bg: #0a0a10;
+  --bg-elev: #101018;
+  --border: #23232f;
+  --text: #e9e9f0;
+  --muted: #8b8b9c;
+  /* Curve (purple), Aerodrome (blue), Velodrome (teal) — the three colors that
+     recur through the protocol icons below are used deliberately as the site's
+     own palette, not just a generic dark-mode purple/cyan pairing. */
+  --accent: #7c5cff;
+  --aerodrome: #0052ff;
+  --velodrome: #0ea5a8;
+  /* Clever (gold/amber) and Concentrator (rose/magenta) — added alongside the
+     four above for the 4→6 protocol lineup, same "own hue per protocol"
+     pattern, picked to stay visually distinct from the purple/blue/teal
+     already in use and from each other. */
+  --clever: #eab308;
+  --concentrator: #ec4899;
+  /* Yield Basis previously had no hue of its own (every other protocol does) — added for the
+     body-background pass below, which wants one glow color per supported protocol. Same
+     "internal distinguishing convention" basis as clever/concentrator's picks above, not a claim
+     about Yield Basis's own real-world brand color: an amber-orange, picked to sit clearly apart
+     from clever's yellow-gold and concentrator's rose in the six-hue set. */
+  --yieldbasis: #f97316;
+  --accent-2: #22d3ee;
+  --ok: #34d399;
+  --err: #f87171;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+
+  /* Secondary tokens: alpha-blended/derived colors that used to be hardcoded
+     rgba()/hex literals scattered through the rules below. Pulled up here so
+     light mode can re-theme them too instead of leaving dark-only leftovers. */
+  --glow-accent: rgba(124, 92, 255, 0.18);
+  --glow-aerodrome: rgba(0, 82, 255, 0.14);
+  --glow-velodrome: rgba(14, 165, 168, 0.1);
+  /* Lower-page glows (see body's background below) — clever/concentrator/yieldbasis, kept a
+     touch softer than the three hero-band ones above since they sit behind dense card content
+     rather than open hero space and need to stay firmly in the background. */
+  --glow-clever: rgba(234, 179, 8, 0.07);
+  --glow-concentrator: rgba(236, 72, 153, 0.07);
+  --glow-yieldbasis: rgba(249, 115, 22, 0.06);
+  --dot-glow: rgba(124, 92, 255, 0.8);
+  --header-bg: rgba(7, 7, 11, 0.72);
+  --shadow: rgba(0, 0, 0, 0.45);
+  --hover-overlay: rgba(255, 255, 255, 0.06);
+  --accent2-soft: rgba(34, 211, 238, 0.4);
+  --surface-tint: rgba(255, 255, 255, 0.015);
+  --surface-tint-2: rgba(255, 255, 255, 0.01);
+  --border-soft: rgba(35, 35, 47, 0.6);
+  --log-bg: #05050a;
+  --log-timestamp: #4b4b5f;
+  --log-evt: #d8b4fe;
+  --backdrop: rgba(0, 0, 0, 0.65);
+  --wallet-hover: #17171f;
+  --border-hover: #3a3a4d;
+  /* Claim preview panel width — read by layoutPanel() in app.js as well as applied below, so
+     the CSS and the "does it fit beside the card?" test can never disagree. Not theme-dependent,
+     so it is deliberately NOT duplicated in the light block. */
+  --claim-panel-width: 720px;
+}
+
+/* Light theme: a real, deliberate light palette (not inverted grays). Brand
+   hues stay in the same family as dark mode — Curve purple / Aerodrome blue /
+   Velodrome teal — but Velodrome's teal and the cyan accent are deepened
+   here since the original bright dark-mode values fall below comfortable
+   text contrast on a light background (they're used as real text/icon
+   colors in places, e.g. #log .info, .protocol[data-status="ok"], not just
+   decorative fills). Aerodrome blue and the purple accent already contrast
+   fine on white so they're kept as-is for hue continuity across themes. */
+:root[data-theme="light"] {
+  --bg: #f4f5f9;
+  --bg-elev: #ffffff;
+  --border: #e1e3ec;
+  --text: #14151c;
+  --muted: #62636f;
+  --accent: #7c5cff;
+  --aerodrome: #0052ff;
+  --velodrome: #0b7285;
+  /* Deepened from dark mode's #eab308/#ec4899 for the same reason velodrome/
+     accent-2/ok/err are deepened here — readable as literal text/icon color
+     on a light background, not just a decorative fill. */
+  --clever: #a16207;
+  --concentrator: #be185d;
+  /* See dark mode's --yieldbasis comment — same amber-orange hue, since the color itself (not
+     its contrast-adjusted text usages, which this token isn't used for) doesn't need the
+     deepening the other light-mode accents get. */
+  --yieldbasis: #ea580c;
+  --accent-2: #0e7490;
+  --ok: #059669;
+  --err: #dc2626;
+
+  --glow-accent: rgba(124, 92, 255, 0.1);
+  --glow-aerodrome: rgba(0, 82, 255, 0.07);
+  --glow-velodrome: rgba(11, 114, 133, 0.06);
+  --glow-clever: rgba(161, 98, 7, 0.05);
+  --glow-concentrator: rgba(190, 24, 93, 0.05);
+  --glow-yieldbasis: rgba(234, 88, 12, 0.045);
+  --dot-glow: rgba(124, 92, 255, 0.35);
+  --header-bg: rgba(244, 245, 249, 0.72);
+  --shadow: rgba(15, 23, 42, 0.12);
+  --hover-overlay: rgba(15, 23, 42, 0.045);
+  --accent2-soft: rgba(14, 116, 144, 0.35);
+  --surface-tint: rgba(15, 23, 42, 0.02);
+  --surface-tint-2: rgba(15, 23, 42, 0.015);
+  --border-soft: rgba(15, 23, 42, 0.1);
+  --log-bg: #eef0f5;
+  --log-timestamp: #9294a3;
+  --log-evt: #7c3aed;
+  --backdrop: rgba(15, 23, 42, 0.45);
+  --wallet-hover: #f1f2f7;
+  --border-hover: #c7cad6;
+}
+
+* { box-sizing: border-box; }
+
+/* Clickjacking guard, CSS half — see docs/js/framebust.js for the full rationale (short version:
+   GitHub Pages cannot send `frame-ancestors`/`X-Frame-Options`, and meta-delivered CSP ignores
+   `frame-ancestors`, so the header defence is unavailable and this is the mitigation that is).
+
+   `display: none` is chosen over `visibility`/`opacity` deliberately: it removes the app from HIT
+   TESTING as well as from paint, so a framed page's buttons are not merely invisible but
+   genuinely unclickable — which is the whole point, since the attack is a click landing on a
+   control the victim cannot see. Suppression is unconditional, NOT contingent on framebust.js's
+   top-navigation attempt succeeding; a `sandbox="allow-scripts"` frame defeats that attempt and
+   this rule is what still holds.
+
+   Placed here, immediately after the reset and before anything else, so it cannot be
+   accidentally out-specified by a later rule loaded from claim.css. */
+html[data-framed] body > *:not(.framebust-notice) { display: none !important; }
+
+.framebust-notice {
+  max-width: 34rem;
+  margin: 12vh auto;
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-elev);
+}
+.framebust-notice h1 { margin: 0 0 12px; font-size: 20px; }
+.framebust-notice p { margin: 0 0 16px; color: var(--muted); }
+.framebust-link { color: var(--accent-2); }
+
+/* Six soft radial glows, one per supported protocol's own hue, extending down the page (not just
+   the hero band) so the color continues subtly as the portfolio list scrolls instead of handing
+   off to a flat, colorless canvas the moment the hero ends. The lower three are positioned in
+   `vh` rather than a fixed px guess — the page's real height is dynamic (collapsed vs. every
+   card expanded, demo vs. a real wallet's actual claim data can differ by a page-height or more),
+   so anchoring to "N viewport-heights down" scales sensibly across that range instead of landing
+   confidently on content that, at a fixed px offset, may not exist yet on a short page or may
+   have already scrolled past on a tall one — confirmed live: a first attempt using fixed px
+   (820/1300/1850) landed entirely below the actual ~1200px-tall default page and was invisible.
+   All six stay firmly in "ambient tint" territory (max ~0.18 alpha, falling off well before
+   halfway) so dense card content painted on top never has to fight the background for attention —
+   see each --glow-* value's own comment in :root for why the lower three are dialed back further
+   than the top three. */
+body {
+  margin: 0;
+  background:
+    radial-gradient(900px 500px at 85% -10%, var(--glow-accent), transparent 60%),
+    radial-gradient(800px 450px at 100% 30%, var(--glow-aerodrome), transparent 60%),
+    radial-gradient(700px 400px at 10% 10%, var(--glow-velodrome), transparent 60%),
+    radial-gradient(650px 500px at 6% 55vh, var(--glow-clever), transparent 65%),
+    radial-gradient(700px 550px at 96% 95vh, var(--glow-concentrator), transparent 65%),
+    radial-gradient(750px 550px at 30% 135vh, var(--glow-yieldbasis), transparent 65%),
+    var(--bg);
+  color: var(--text);
+  font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+  min-height: 100vh;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  backdrop-filter: blur(12px);
+  background: var(--header-bg);
+  z-index: 10;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+/* Logo mark: a crest outline with three linked nodes inside, echoing the
+   constellation motif used in the hero background — this isn't a generic
+   wordmark, it's meant to read as an actual brand symbol. Gradient stroke
+   defined once via #brandGrad in the SVG's own <defs> (index.html) and
+   referenced by every stroked/filled part here, so mark and wordmark share
+   one identical gradient instance. */
+.brand-mark {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  filter: drop-shadow(0 0 6px var(--dot-glow));
+  animation: shimmer 3s ease-in-out infinite;
+}
+
+/* Staggered so the brightening reads as travelling around the triangle rather than the three
+   nodes blinking in unison. nth-of-type counts only among the <circle> siblings, so the crest
+   path and the three connecting lines are unaffected. */
+.brand-node { animation: brand-node-pulse 3.6s ease-in-out infinite; }
+.brand-node:nth-of-type(2) { animation-delay: 0.6s; }
+.brand-node:nth-of-type(3) { animation-delay: 1.2s; }
+
+.brand-stop-a { stop-color: var(--accent); }
+.brand-stop-b { stop-color: var(--aerodrome); }
+.brand-stop-c { stop-color: var(--velodrome); }
+
+.brand-word {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+}
+
+.brand-family {
+  font-size: 14.5px;
+  font-weight: 750;
+  letter-spacing: 2px;
+  color: var(--text);
+}
+
+.brand-office {
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 3.5px;
+  background: linear-gradient(100deg, var(--accent) 0%, var(--aerodrome) 60%, var(--velodrome) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-elev);
+  color: var(--text);
+  padding: 9px 14px;
+  transition: border-color 0.15s, background 0.15s, opacity 0.15s;
+}
+
+button:hover:not(:disabled) { border-color: var(--border-hover); }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+#connect {
+  border: none;
+  background: linear-gradient(135deg, var(--accent), #5b8cff);
+  /* Always light text on this gradient — the gradient's own hue doesn't
+     invert between themes, so it can't just inherit var(--text). */
+  color: #fff;
+  font-weight: 600;
+  padding: 10px 18px;
+  min-width: 116px;
+}
+
+/* Connected state is just "Disconnect" in red — the button itself IS the disconnect action now
+   (see onConnectClick()/renderConnection()); no address, no dropdown. --err is this app's
+   existing danger/destructive color (already used for .dropdown-item.danger, log lines, etc.),
+   reused here rather than a one-off red. */
+#connect[data-state="connected"] {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  color: var(--err);
+  font-weight: 600;
+}
+#connect[data-state="connected"]:hover:not(:disabled) { border-color: var(--err); }
+
+/* "Alpha" icons — one per protocol currently carrying a nonzero claimable
+   value, sitting in the header's flexible middle space between the brand and
+   the theme/privacy/connect controls (header is `justify-content:
+   space-between`, so this just naturally falls in the gap). Empty (no
+   children) when nothing's claimable yet / before data loads — no
+   empty-state placeholder, same "don't show a chain/section with nothing on
+   it" convention used everywhere else in this app. */
+.alpha-icons {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.alpha-icon {
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  animation: alpha-bounce 2.6s ease-in-out infinite;
+}
+
+/* Small-amplitude, slow — chrome around a financial dashboard, not a game.
+   Delay is staggered per-icon (see renderAlphaIcons() in app.js) so a row of
+   icons doesn't bounce in unison. */
+@keyframes alpha-bounce {
+  0%, 100% { transform: translateY(0); opacity: 0.55; }
+  50% { transform: translateY(-3px); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .alpha-icon { animation: none; }
+}
+
+/* iOS-style indeterminate spinner — replaces literal "loading…" text
+   everywhere in the app (protocol claim badges, the header total). Sized via
+   --spinner-size (set inline per call site, see spinnerNode() in app.js);
+   blades use currentColor so they always match whatever text color they're
+   standing in for, in both themes, with zero extra wiring. */
+.spinner {
+  --spinner-size: 14px;
+  display: inline-block;
+  position: relative;
+  width: var(--spinner-size);
+  height: var(--spinner-size);
+  vertical-align: middle;
+}
+
+.spinner-blade {
+  position: absolute;
+  top: 0;
+  left: 46%;
+  width: 8%;
+  height: 30%;
+  background: currentColor;
+  border-radius: 1px;
+  transform-origin: 50% calc(var(--spinner-size) / 2);
+  animation: spinner-fade 1s linear infinite;
+  opacity: 0.25;
+}
+
+@keyframes spinner-fade {
+  0% { opacity: 1; }
+  100% { opacity: 0.25; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner-blade { animation: none; opacity: 0.6; }
+}
+
+/* Subtle fade whenever a claim badge/total's content actually changes — most
+   visibly the spinner-to-value swap once a fetch resolves (see fadeInSwap()
+   in app.js, which adds/removes this class around any content update). */
+.value-fade-in {
+  animation: value-fade-in 0.35s ease;
+}
+
+@keyframes value-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes shimmer {
+  0%, 100% { filter: drop-shadow(0 0 4px rgba(124, 92, 255, 0)) brightness(1); }
+  50% { filter: drop-shadow(0 0 8px rgba(124, 92, 255, 0.4)) brightness(1.1); }
+}
+
+/* The three linked nodes inside the crest brighten in sequence, reading as value moving
+   between holdings — the same thing this app actually tracks. Deliberately applied to the
+   NODES and not the crest itself: the shield is the stability/custody half of the mark, and
+   rotating or bouncing it would work against exactly the connotation it exists to carry, so
+   it stays perfectly still while only the network inside it animates. Opacity only (no
+   transform/geometry), which keeps it cheap and avoids per-element transform-box quirks on
+   SVG shapes. */
+@keyframes brand-node-pulse {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .value-fade-in { animation: none; }
+  .shimmer { animation: none; }
+  .brand-mark,
+  .brand-node { animation: none; }
+}
+
+.header-actions { display: flex; align-items: center; gap: 8px; }
+
+#theme-toggle,
+#privacy-toggle {
+  padding: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+}
+
+#theme-toggle:hover:not(:disabled),
+#privacy-toggle:hover:not(:disabled) { color: var(--text); }
+#theme-toggle[aria-pressed="true"],
+#privacy-toggle[aria-pressed="true"] { color: var(--accent-2); border-color: var(--accent2-soft); }
+
+.theme-icon,
+.eye-icon {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Masked values still occupy the same layout width as the real text so nothing
+   reflows when privacy mode toggles — a fixed-width dot run rather than a blur,
+   so the underlying figure isn't even partially legible (e.g. in a screenshot). */
+[data-real].is-masked { letter-spacing: 2px; }
+
+.connect-wrap { position: relative; }
+
+.dropdown-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 190px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 6px;
+  box-shadow: 0 12px 32px var(--shadow);
+  z-index: 20;
+}
+
+.dropdown-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+  padding: 6px 10px 4px;
+}
+
+.dropdown-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13.5px;
+  font-weight: 500;
+}
+
+.dropdown-item:hover:not(:disabled) { background: var(--hover-overlay); border-color: transparent; }
+
+main {
+  max-width: 940px;
+  margin: 0 auto;
+  padding: 40px 24px 80px;
+}
+
+/* Wraps the hero text + demo badge so .hero-mesh (absolutely positioned,
+   height: 100%) spans exactly the space between the header and the
+   portfolio card — whatever that space happens to be, since it's driven by
+   these two in-flow siblings' own content height, not a hardcoded number. */
+.hero-wrap { position: relative; padding-top: 4px; }
+
+.hero { position: relative; z-index: 1; }
+
+.hero-mesh {
+  position: absolute;
+  top: 0;
+  right: -24px;
+  width: min(560px, 55%);
+  height: 100%;
+  opacity: 0.55;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.hero-mesh line { stroke: var(--border); stroke-width: 1; }
+.hero-mesh .n-curve { fill: var(--accent); }
+.hero-mesh .n-aero { fill: var(--aerodrome); }
+.hero-mesh .n-velo { fill: var(--velodrome); }
+
+.hero h1, .hero .sub, #demo-badge { position: relative; z-index: 1; }
+
+h1 {
+  font-size: 34px;
+  line-height: 1.2;
+  letter-spacing: -0.025em;
+  margin: 0 0 14px;
+  max-width: 20ch;
+}
+
+h1 .grad {
+  background: linear-gradient(100deg, var(--accent) 0%, var(--aerodrome) 60%, var(--velodrome) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 3s ease-in-out infinite;
+}
+
+.sub { color: var(--muted); margin: 0 0 32px; max-width: 62ch; }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+  /* Keep a collapsed card from stretching to match an expanded sibling. */
+  align-items: start;
+}
+
+.card {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px;
+}
+
+/* Collapsible cards: the summary owns the padding so the whole header is a hit target. */
+details.card { padding: 0; }
+
+details.card > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  font-weight: 600;
+  border-radius: 13px;
+  transition: color 0.15s;
+}
+
+details.card > summary::-webkit-details-marker { display: none; }
+details.card > summary:hover { color: var(--text); }
+details.card > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+details.card[open] > summary { border-bottom: 1px solid var(--border); border-radius: 13px 13px 0 0; }
+
+.caret {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 0.2s ease;
+}
+
+details.card[open] > summary .caret { transform: rotate(180deg); }
+
+.card-body { padding: 4px 18px 14px; }
+
+/* Per-protocol rows inside Portfolio: each is its own small collapsible,
+   collapsed to just name + claimable so multiple protocols scan at a glance. */
+#protocol-list { display: flex; flex-direction: column; gap: 8px; }
+
+/* One CSS variable per row, set by protocol id, so the row rules below stay a single generic
+   pair instead of six near-duplicate blocks — same "--row-accent indirection" pattern as
+   .brand-stop-a/b/c elsewhere in this file. Reuses each protocol's own existing --glow-* token
+   (already a low-alpha version of that protocol's hue, tuned for the page-background pass) rather
+   than inventing a second set of row-specific colors — one source of truth per protocol color. */
+.protocol[data-protocol="curve"] { --row-accent: var(--accent); --row-wash: var(--glow-accent); }
+.protocol[data-protocol="aerodrome"] { --row-accent: var(--aerodrome); --row-wash: var(--glow-aerodrome); }
+.protocol[data-protocol="velodrome"] { --row-accent: var(--velodrome); --row-wash: var(--glow-velodrome); }
+.protocol[data-protocol="yieldbasis"] { --row-accent: var(--yieldbasis); --row-wash: var(--glow-yieldbasis); }
+.protocol[data-protocol="clever"] { --row-accent: var(--clever); --row-wash: var(--glow-clever); }
+.protocol[data-protocol="concentrator"] { --row-accent: var(--concentrator); --row-wash: var(--glow-concentrator); }
+
+.protocol {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  /* Solid left stripe in the protocol's own hue (no alpha needed — a thin 3px bar reads as a
+     clean category marker, the same convention as a PR label or a Slack channel highlight) plus
+     a soft horizontal wash fading out by 70% of the row's width, so the color is legible right at
+     the icon/name without ever reaching the $ figure or Claim button on the row's right edge —
+     those need to stay firmly on the plain --surface-tint reading real numbers, not a colored one. */
+  border-left: 3px solid var(--row-accent, var(--border));
+  background:
+    linear-gradient(90deg, var(--row-wash, transparent) 0%, transparent 70%),
+    var(--surface-tint);
+}
+
+.protocol > summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.protocol > summary::-webkit-details-marker { display: none; }
+.protocol > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 10px; }
+.protocol[open] > summary { border-bottom: 1px solid var(--border); }
+
+.protocol-icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  flex-shrink: 0;
+}
+
+.protocol-name { font-weight: 600; font-size: 13.5px; }
+
+/* Groups the Claim trigger + $ figure so they read as one unit ("Claim
+   $1,234.56") and so the group's OWN margin-left:auto reliably pushes both
+   to the right even while the Claim trigger itself is hidden (a hidden
+   child's margin doesn't push anything, which is why this lives on the
+   always-rendered group rather than on .claim-menu-wrap directly). */
+.protocol-claim-group {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.protocol-claim {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.protocol[data-status="ok"] .protocol-claim { color: var(--ok); }
+.protocol[data-status="error"] .protocol-claim,
+.protocol[data-status="wrong-chain"] .protocol-claim { color: var(--muted); font-style: italic; }
+
+/* A failed row's status label doubles as a click-to-retry control (see
+   setClaimStatusRetry()) — given the same tri-color gradient text as .claim-btn so both
+   per-row actions read as one visual language. The status-color rules above are overridden
+   here (they'd otherwise win on specificity and repaint the gradient's transparent text). */
+.protocol[data-status="cancelled"] .protocol-claim { color: var(--muted); }
+
+.protocol[data-status="error"] .protocol-claim.is-retry,
+.protocol[data-status="wrong-chain"] .protocol-claim.is-retry,
+.protocol[data-status="cancelled"] .protocol-claim.is-retry {
+  cursor: pointer;
+  font-style: normal;
+  font-weight: 650;
+  background: linear-gradient(100deg, var(--accent) 0%, var(--aerodrome) 60%, var(--velodrome) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 1px 6px rgba(124, 92, 255, 0.35));
+  transition: filter 0.15s;
+}
+
+.protocol-claim.is-retry:hover { filter: drop-shadow(0 1px 10px rgba(124, 92, 255, 0.55)); text-decoration: underline; }
+.protocol-claim.is-retry:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+
+/* "Claim" trigger + its dropdown, sitting to the left of the $ figure (inside
+   .protocol-claim-group above) — same ghost-text-with-shadow treatment as
+   .demo-badge-connect (tri-color gradient text, no button chrome) so the two
+   "do a wallet thing" affordances in this app read as one visual language. */
+.claim-menu-wrap { position: relative; }
+
+.claim-btn {
+  all: unset;
+  cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 650;
+  background: linear-gradient(100deg, var(--accent) 0%, var(--aerodrome) 60%, var(--velodrome) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 1px 6px rgba(124, 92, 255, 0.35));
+  transition: filter 0.15s;
+  animation: shimmer 3s ease-in-out infinite;
+}
+.claim-btn:hover { filter: drop-shadow(0 1px 10px rgba(124, 92, 255, 0.55)); text-decoration: underline; }
+.claim-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+.claim-btn:disabled { cursor: default; filter: none; }
+.claim-btn:disabled:hover { text-decoration: none; }
+
+/* Cooldown after a failed claim-preview build (see startClaimCooldown()) — deliberately breaks
+   from the normal gradient-text treatment (solid, error-colored, bold, gently pulsing) so the
+   countdown reads as "wait, something needs your attention" rather than blending into the
+   button's usual idle look. */
+.claim-btn--cooldown {
+  background: none;
+  -webkit-text-fill-color: var(--err);
+  color: var(--err);
+  font-weight: 800;
+  filter: none;
+  animation: claim-cooldown-pulse 1.4s ease-in-out infinite;
+}
+@keyframes claim-cooldown-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* The button's own `color` is transparent (see the background-clip:text gradient trick above),
+   which the busy-state spinner would otherwise inherit via currentColor, rendering invisible
+   blades — this restores a real, visible color scoped to just the spinner. */
+.claim-btn .spinner { color: var(--muted); }
+
+/* A protocol whose claim-to-mainnet consolidation flow doesn't exist yet (see
+   CLAIM_TO_MAINNET_SUPPORTED in app.js) — flat, muted, and explicitly NOT shimmering, so it
+   reads as "not yet available" rather than the active button's "click me, something's ready"
+   gradient shimmer. `:disabled` alone (see .claim-btn:disabled above) only drops the filter/
+   cursor and leaves the gradient-text + infinite shimmer animation running, which would still
+   look like a live, clickable claim. */
+.claim-btn--soon {
+  background: none;
+  -webkit-text-fill-color: var(--muted);
+  color: var(--muted);
+  font-weight: 600;
+  filter: none;
+  animation: none;
+  cursor: not-allowed;
+}
+.claim-btn--soon:hover { text-decoration: none; filter: none; }
+
+.claim-menu { min-width: 200px; }
+
+/* Progress popover shown by setClaimBusy()/updated by setClaimProgress() while a claim preview
+   is being built — same absolute-anchored-to-.claim-menu-wrap positioning as .dropdown-menu,
+   just wider (route/token names in the status text need more room than a menu item label). */
+.claim-progress-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 260px;
+  max-width: 80vw;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  box-shadow: 0 12px 32px var(--shadow);
+  z-index: 20;
+  opacity: 1;
+  transition: opacity 0.3s ease;
+}
+
+/* Applied by flashClaimError() 2s after a build-failure message appears, before it actually sets
+   `hidden` — an abrupt hidden=true with no transition read as the popup vanishing rather than
+   dismissing. */
+.claim-progress-popover--fade-out {
+  opacity: 0;
+}
+
+.claim-progress-text {
+  font-size: 12.5px;
+  color: var(--text);
+  margin-bottom: 8px;
+  line-height: 1.35;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.claim-progress-token-icon {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.claim-progress-track {
+  height: 5px;
+  border-radius: 3px;
+  background: var(--border-soft);
+  overflow: hidden;
+}
+
+.claim-progress-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(100deg, var(--accent) 0%, var(--aerodrome) 60%, var(--velodrome) 100%);
+  transition: width 0.3s ease;
+}
+
+/* Shown by flashClaimError() when building the claim preview fails — reuses the same popover
+   the busy progress uses so the button doesn't just silently go back to idle with no explanation. */
+.claim-progress-popover--error {
+  border-color: var(--err);
+}
+
+.claim-progress-popover--error .claim-progress-text {
+  color: var(--err);
+}
+
+.caret-sm {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  color: var(--muted);
+  transition: transform 0.2s ease;
+}
+
+.protocol[open] > summary .caret-sm { transform: rotate(180deg); }
+
+.protocol-body { padding: 2px 14px 12px; }
+
+/* One level deeper than .protocol — e.g. Curve's veCRV / Votemarket split inside
+   its own body. Same collapsed-by-default pattern, scaled down and indented so it
+   visually reads as nested rather than a sibling protocol. */
+.protocol-sub {
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: var(--surface-tint-2);
+  margin-left: 8px;
+}
+
+.protocol-sub + .protocol-sub { margin-top: 6px; }
+
+.protocol-sub > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.protocol-sub > summary::-webkit-details-marker { display: none; }
+.protocol-sub > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 8px; }
+.protocol-sub[open] > summary { border-bottom: 1px solid var(--border-soft); }
+
+.protocol-sub-name { font-weight: 600; font-size: 12px; color: var(--muted); }
+
+.protocol-sub-claim {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.protocol-sub[data-status="ok"] .protocol-sub-claim { color: var(--ok); }
+.protocol-sub[data-status="error"] .protocol-sub-claim,
+.protocol-sub[data-status="wrong-chain"] .protocol-sub-claim { color: var(--muted); font-style: italic; }
+
+/* Votemarket's $ figure is real and counted in Curve's top-level claimable total, but clicking
+   Curve's Claim button only ever claims veCRV — this says so right where the figure it applies
+   to is shown, rather than leaving a claim button that quietly does less than its own $X implies.
+   See fillSubsection()'s comment. */
+.protocol-sub-badge {
+  margin-left: 8px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--surface-tint);
+  border: 1px solid var(--border-soft);
+  color: var(--muted);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  font-style: normal;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.caret-xs {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  color: var(--muted);
+  transition: transform 0.2s ease;
+}
+
+.protocol-sub[open] > summary .caret-xs { transform: rotate(180deg); }
+
+.protocol-sub-body { padding: 2px 10px 10px 18px; font-size: 12.5px; }
+
+.protocol-note {
+  color: var(--muted);
+  font-size: 13px;
+  padding: 6px 0 2px;
+}
+
+.protocol-note.is-retry {
+  color: var(--accent);
+  cursor: pointer;
+  outline: none;
+}
+
+.protocol-note.is-retry:hover {
+  text-decoration: underline;
+  filter: drop-shadow(0 1px 10px rgba(124, 92, 255, 0.55));
+}
+
+.protocol-note.is-retry:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.claims-head {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin: 12px 0 2px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.claim-row .k { display: flex; align-items: center; gap: 6px; }
+.claim-row .token-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent-2); flex-shrink: 0; }
+.claim-row .usd { color: var(--muted); font-size: 11.5px; margin-left: 6px; }
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.row:last-child { border-bottom: none; }
+.row .k { color: var(--muted); flex-shrink: 0; }
+.row .v { font-family: var(--mono); font-size: 13px; text-align: right; word-break: break-all; }
+
+.cash-card { margin-bottom: 16px; }
+.portfolio-card { margin-bottom: 16px; }
+.log-card { margin-top: 16px; }
+
+/* Cash card — stablecoin balances actually sitting spendable in the wallet, as distinct from
+   everything in Portfolio below it (claimable, not yet in hand). Reuses .card/.card-body/
+   .portfolio-total/.caret-xs from elsewhere in this file rather than inventing parallel chrome —
+   only the token/chain-row styling below is new. One `<details class="cash-token">` per symbol
+   (crvUSD/USDC/...), native <details>/<summary> toggle (no enableAccordion() — that also enforces
+   "only one sibling open at a time", which reads wrong here: comparing two tokens' per-chain
+   breakdowns side by side is a reasonable thing to want, unlike Curve's veCRV/Votemarket
+   subsections which enableAccordion() was written for).
+   Text size is deliberately UNIFORM across every element in this card (symbol, total, chain name,
+   chain amount all 13px) — hero/flame status is communicated through color/weight/gradient/glow
+   only, not by making the text itself bigger. */
+.cash-token { border-bottom: 1px solid var(--border-soft); }
+.cash-token:last-of-type { border-bottom: none; }
+.cash-token > summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 4px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+  font-size: 13px;
+}
+.cash-token > summary::-webkit-details-marker { display: none; }
+.cash-token > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 6px; }
+.cash-token[open] > summary .caret-xs { transform: rotate(180deg); }
+
+.cash-symbol { font-weight: 600; color: var(--text); }
+.cash-amount { font-family: var(--mono); font-size: 13px; color: var(--muted); margin-left: auto; text-align: right; }
+
+/* crvUSD specifically — this app's own delivery currency (see STABLECOINS' comment in app.js) —
+   gets the same tri-color gradient-text treatment as .claim-btn/.protocol-sub-badge's siblings
+   elsewhere in this file, so it visually reads as "the thing this app is FOR" rather than one
+   balance among equals. Weight/color only — font-size stays the shared 13px above. */
+.cash-token--hero .cash-amount {
+  font-weight: 650;
+  background: linear-gradient(100deg, var(--accent) 0%, var(--aerodrome) 60%, var(--velodrome) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Per-chain breakdown, revealed on expand — same indented-sub-row convention as
+   .protocol-sub-body elsewhere in this file. */
+.cash-token-body { padding: 0 4px 8px 4px; }
+.cash-chain-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0 6px 14px;
+  font-size: 13px;
+}
+.cash-chain-name { color: var(--muted); }
+.cash-chain-amount { font-family: var(--mono); font-size: 13px; color: var(--muted); }
+
+/* scrvUSD gets reddish tones instead of the brand tri-color gradient (this is the OTHER
+   crvUSD-denominated position — see STABLECOINS' comment in app.js) so the two read as siblings,
+   not identical twins: crvUSD is "the thing this app delivers", scrvUSD is "the same thing,
+   earning". Plus a subtle animated flame glow behind the figure — a warm orange/red text-shadow
+   that varies in blur/opacity over an uneven cycle (four keyframe stops rather than a clean sine
+   ease, so it reads as an actual flicker rather than a mechanical pulse), paired with the 🔥🔥
+   suffix already appended in app.js. The glow is text-shadow only (no layout-affecting
+   properties, no font-size change — stays the shared 13px), same "ambient, never overwhelming"
+   bar every other decorative animation in this file is held to — see brand-node-pulse/shimmer
+   for the sibling conventions this follows. */
+.cash-amount--flame {
+  font-weight: 650;
+  background: linear-gradient(100deg, #f97316 0%, #ef4444 55%, #dc2626 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: cash-flame-flicker 2.2s ease-in-out infinite;
+}
+@keyframes cash-flame-flicker {
+  0%, 100% { text-shadow: 0 0 6px rgba(249, 115, 22, 0.35), 0 0 12px rgba(234, 88, 12, 0.15); }
+  30% { text-shadow: 0 0 9px rgba(249, 115, 22, 0.55), 0 0 18px rgba(234, 88, 12, 0.28); }
+  55% { text-shadow: 0 0 4px rgba(249, 115, 22, 0.25), 0 0 8px rgba(234, 88, 12, 0.1); }
+  80% { text-shadow: 0 0 10px rgba(249, 115, 22, 0.5), 0 0 16px rgba(234, 88, 12, 0.24); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cash-amount--flame { animation: none; text-shadow: 0 0 8px rgba(249, 115, 22, 0.35); }
+}
+
+/* Disconnected-state banner shown above the Portfolio card while startDemoMode()
+   (app.js) is populating it with synthetic data. Echoes the hero's tri-color
+   gradient (.grad) and the pulsing dot pattern already used for .brand .dot,
+   rather than introducing a new visual motif. */
+.demo-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  margin-bottom: 10px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(124, 92, 255, 0.35);
+  background: linear-gradient(100deg, rgba(124, 92, 255, 0.14) 0%, rgba(0, 82, 255, 0.14) 60%, rgba(14, 165, 168, 0.14) 100%);
+}
+
+/* The `display: flex` above otherwise beats the UA stylesheet's `[hidden] {
+   display: none }` in the cascade (author rules win UA rules at equal
+   specificity) — without this, toggling the `hidden` property from app.js
+   would have no visual effect. */
+.demo-badge[hidden] { display: none; }
+
+.demo-badge-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--accent-2);
+  box-shadow: 0 0 8px rgba(34, 211, 238, 0.75);
+  animation: demo-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes demo-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.demo-badge-label {
+  font-size: 11px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent-2);
+}
+
+.demo-badge-note { font-size: 12.5px; color: var(--muted); }
+
+/* Inline stand-in for the header's #connect button — same click handler
+   (onConnectClick, wired in app.js), styled as ghost text rather than a
+   filled button so it reads as part of the sentence: tri-color gradient
+   text (same convention as h1's .grad) plus a soft drop-shadow for depth,
+   no border/background/padding of its own. */
+.demo-badge-connect {
+  all: unset;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 650;
+  background: linear-gradient(100deg, var(--accent) 0%, var(--aerodrome) 60%, var(--velodrome) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 1px 6px rgba(124, 92, 255, 0.35));
+  transition: filter 0.15s;
+}
+.demo-badge-connect:hover { filter: drop-shadow(0 1px 10px rgba(124, 92, 255, 0.55)); text-decoration: underline; }
+.demo-badge-connect:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+
+/* Summary-bar buttons are only meaningful once the card body is visible. */
+.summary-tools { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+details.card:not([open]) .summary-tools button { display: none; }
+
+.summary-tools button {
+  padding: 4px 10px;
+  font-size: 12px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* Cancel sits next to Refresh only while a refresh is actually running (toggled via [hidden]
+   in setRefreshUiBusy()). Same tri-color gradient-text treatment as .claim-btn — it's the
+   third "action you can take" affordance in this app and shares their visual language rather
+   than adding button chrome to the header row. `all: unset` first, so .summary-tools button's
+   padding/size above doesn't fight the ghost-text look. */
+.cancel-btn.cancel-btn {
+  all: unset;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 650;
+  background: linear-gradient(100deg, var(--accent) 0%, var(--aerodrome) 60%, var(--velodrome) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 1px 6px rgba(124, 92, 255, 0.35));
+  transition: filter 0.15s;
+}
+
+.cancel-btn.cancel-btn:hover { filter: drop-shadow(0 1px 10px rgba(124, 92, 255, 0.55)); text-decoration: underline; }
+.cancel-btn.cancel-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+/* `all: unset` drops the UA [hidden] display rule, so restore it explicitly — same gotcha the
+   .demo-badge[hidden] rule documents elsewhere in this file. */
+.cancel-btn.cancel-btn[hidden] { display: none; }
+
+/* Total claimable across every protocol, next to the Portfolio card's own
+   title — same summary-tools row as the Refresh button, sized/colored like
+   .protocol-claim (mono figure, muted while loading, green once resolved)
+   rather than inventing a new visual language for the header. */
+.portfolio-total {
+  font-family: var(--mono);
+  font-size: 12px;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--muted);
+}
+
+.portfolio-total.is-ready { color: var(--ok); }
+
+#log {
+  background: var(--log-bg);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px 16px;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  height: 260px;
+  overflow-y: auto;
+  /* One visual line box per entry, scrolled horizontally rather than wrapped. Wrapping
+     (pre-wrap + word-break) turned each long RPC line into several line boxes, so a burst of
+     hundreds of lines cost multiples of that in layout — the measurable tail of the same
+     main-thread starvation the log batching/truncation in app.js addresses. Truncated lines
+     already say how much was elided, so nothing is silently lost by not wrapping. */
+  white-space: pre;
+  overflow-x: auto;
+}
+
+#log .line { padding: 2px 0; }
+#log .t { color: var(--log-timestamp); margin-right: 8px; }
+#log .info { color: var(--accent-2); }
+#log .ok { color: var(--ok); }
+#log .err { color: var(--err); }
+#log .evt { color: var(--log-evt); }
+
+/* Wallet picker modal */
+dialog {
+  border: 1px solid var(--border);
+  background: var(--bg-elev);
+  color: var(--text);
+  border-radius: 16px;
+  padding: 0;
+  width: min(380px, calc(100vw - 32px));
+}
+
+dialog::backdrop { background: var(--backdrop); backdrop-filter: blur(3px); }
+
+dialog .head {
+  padding: 18px 20px 12px;
+  font-weight: 650;
+  border-bottom: 1px solid var(--border);
+}
+
+dialog .body { padding: 12px; display: grid; gap: 6px; }
+
+.wallet-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  padding: 12px;
+  background: transparent;
+  border: 1px solid transparent;
+}
+
+.wallet-btn:hover { background: var(--wallet-hover); border-color: var(--border); }
+.wallet-btn img { width: 26px; height: 26px; border-radius: 7px; }
+.wallet-btn .name { font-weight: 550; }
+
+
+/* Release-state badge (beta / public preview) — sits beside the wordmark. Deliberately quiet:
+   it must be legible and honest without competing with the brand or reading as an error, since
+   the portfolio data it sits above IS real and accurate. Amber, not red. */
+.release-badge {
+  align-self: center;
+  margin-left: 10px;
+  padding: 3px 8px;
+  border: 1px solid color-mix(in srgb, #f5a524 45%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, #f5a524 12%, transparent);
+  color: #f5a524;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: default;
+  white-space: nowrap;
+}
+
+/* Cash row token icon — sized to the row's text rather than the larger protocol-card treatment,
+   so it labels the symbol instead of competing with the dollar figure beside it. Follows
+   applyTokenIcon()'s hidden-until-resolved contract: an unknown token renders no element at all,
+   never a broken image. */
+.cash-token-icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-right: 0.45rem;
+  vertical-align: middle;
+}

@@ -1,0 +1,30 @@
+Copyright (c) 2026 Noah Seidman. All rights reserved.
+
+PROPRIETARY AND CONFIDENTIAL — NO LICENSE GRANTED
+
+This repository and everything in it — source code, comments, design, documentation and
+tooling — is the proprietary work of the copyright holder. It is published for viewing only.
+
+No permission is granted to any person to use, copy, modify, merge, publish, distribute,
+sublicense, sell, or create derivative works from any part of this software, in whole or in
+part, for any purpose, commercial or non-commercial, without the prior written permission of
+the copyright holder.
+
+Making the source publicly readable — whether through this repository or through the browser
+of a site that serves it — is not an offer of a license and does not place the work in the
+public domain. The absence of a permissive license means all rights are reserved, not that
+use is unrestricted.
+
+Nothing here limits rights that cannot be waived under applicable law, nor the rights granted
+to GitHub and to other GitHub users solely by operation of the GitHub Terms of Service for a
+public repository (namely viewing the repository and forking it within GitHub). Those terms
+grant no right to use this work outside GitHub, and no right to use it in any product.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING
+BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR
+OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+This software interacts with blockchain networks and digital assets. It is not financial
+advice. Transactions it constructs are irreversible. Use at your own risk.
