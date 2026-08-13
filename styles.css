@@ -1235,3 +1235,86 @@ dialog .body { padding: 12px; display: grid; gap: 6px; }
   margin-right: 0.45rem;
   vertical-align: middle;
 }
+
+/* ============================================================================
+   MOBILE (FA-100)
+
+   THE FIRST WIDTH-BASED BREAKPOINT THIS FILE HAS EVER HAD. Until now styles.css
+   carried only prefers-reduced-motion queries, so the app had no phone layout at
+   all — and the symptom was not merely "cramped". `header` is a nowrap flex row
+   whose three children measure 607px; on a 390px phone the browser widens the
+   layout viewport to fit them and ZOOMS THE WHOLE PAGE OUT to compensate, so
+   every card, number and button on the page renders smaller than it should while
+   the header still clips. One unshrinkable row cost the entire document its
+   scale. That is what "not within the horizontal bounds of mobile" was.
+
+   The rule below is therefore about the header first and everything else second.
+   Measured on the real device sizes this app is used at: 390px (iPhone-class),
+   and 412px folded / 874px unfolded on the Galaxy Z Fold 7 the board work used.
+   ============================================================================ */
+
+@media (max-width: 720px) {
+  /* WRAP, don't clip. Hiding an action would leave the app unusable rather than
+     merely cramped, and hiding the brand loses the only thing identifying the
+     page. Two short rows beat one row that forces a zoom-out. */
+  header {
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 12px 14px;
+  }
+  /* The brand takes the first row with the actions; the protocol icons drop to
+     their own line, since they are decoration and the actions are not. */
+  .brand { flex: 1 1 auto; min-width: 0; }
+  .brand-word { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .header-actions { flex: 0 0 auto; }
+  .alpha-icons {
+    flex: 1 1 100%;
+    order: 3;
+    justify-content: flex-start;
+    /* Six icons at 20px + gaps fit a 390px row with room to spare; if a seventh
+       protocol ever lands, this scrolls rather than re-breaking the layout. */
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .alpha-icons::-webkit-scrollbar { display: none; }
+
+  main { padding-left: 14px; padding-right: 14px; }
+
+  /* The hero is display copy sized for a desktop column; at phone width the same
+     size runs to a dozen words a line and pushes the actual dashboard below two
+     screens of prose. */
+  .hero h1 { font-size: 30px; line-height: 1.15; }
+  .hero p { font-size: 15px; line-height: 1.55; }
+
+  /* Card headers are label + value + controls on one row. They fit here, but only
+     because the value is allowed to shrink rather than the row growing. */
+  .card-head { gap: 8px; }
+  .card-head .total { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+  /* THE 10px THAT COST THE PAGE ITS SCALE — or rather, the one that survived fixing the header.
+     .hero-mesh is the decorative constellation, positioned `right: -24px` so it bleeds off the edge
+     on a desktop, where the hero column is narrow enough that 24px of bleed lands inside the page's
+     own margin. At phone width there is no margin left to bleed into, so those 24px became real
+     document overflow: 400px of scrollable width on a 390px screen, which is a page that slides
+     sideways under the thumb for no visible reason (the element is decoration and 55% transparent).
+     Pulled flush and clipped here rather than hidden — the constellation is most of the hero's
+     character, and losing it to a rounding error would be a poor trade. */
+  .hero-wrap { overflow: hidden; }
+  .hero-mesh { right: 0; width: min(360px, 60%); }
+
+  /* The log is deliberately a single non-wrapping line per entry that scrolls
+     inside itself (see #log above). That containment is what keeps 2000px-wide
+     RPC lines from touching page layout — min-width: 0 is what keeps it true
+     inside a flex/grid ancestor, and is the exact rule the board's own narrow
+     layout needed for the same reason. */
+  #log { min-width: 0; }
+  .log-card { min-width: 0; }
+}
+
+/* Touch targets, on the same reasoning as the board's: a coarse pointer wants
+   44px regardless of how wide the screen is. */
+@media (pointer: coarse) {
+  header button,
+  .card-head button,
+  .row-toggle { min-height: 44px; }
+}
