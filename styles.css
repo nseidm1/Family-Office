@@ -1309,6 +1309,18 @@ dialog .body { padding: 12px; display: grid; gap: 6px; }
      layout needed for the same reason. */
   #log { min-width: 0; }
   .log-card { min-width: 0; }
+
+  /* Card SUMMARIES are the <details> twin of .card-head above, and they had the same
+     problem one notch narrower. `.summary-tools` is flex-shrink: 0, so at 360px — one of
+     the commonest Android widths — the header row could not give up its last four pixels
+     and pushed the DOCUMENT wider instead. That does not merely clip: the browser widens
+     the layout viewport and zooms the whole page out, so every card and number loses
+     scale for the sake of 4px (the same failure .hero-mesh caused above). Let the row
+     shrink and wrap, and let the running total ellipsize — the buttons and the caret keep
+     their intrinsic size, so nothing collapses onto or overlaps the card's title. */
+  details.card > summary { flex-wrap: wrap; gap: 8px; }
+  .summary-tools { flex-shrink: 1; min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
+  .summary-tools .portfolio-total { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 }
 
 /* Touch targets, on the same reasoning as the board's: a coarse pointer wants
