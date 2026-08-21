@@ -1,7 +1,7 @@
 import { buildAerodromeClaimPreview, executeAerodromeClaim } from '../aerodrome/claim.js';
 import { buildDemoAerodromeClaimPreview, demoAerodromeTokens, demoExecuteAerodromeClaim } from '../aerodrome/demo.js';
 import { applyTokenIcon } from '../aerodrome/icons.js';
-import { AERODROME, CURVE } from '../protocols/config.js';
+import { AERODROME, CONCENTRATOR, CURVE, YIELD_BASIS } from '../protocols/config.js';
 import { ETH_MAINNET, chainName } from '../core/chains.js';
 import { buildDemoResults, demoActive } from '../demo/data.js';
 import { showTxSuccessPopup } from '../tx/feedback.js';
@@ -9,6 +9,8 @@ import { deferClaimReveal, pendingClaimReveals, portfolioInFlight, portfolioResu
 import { showClaimPreviewPanel } from './panel.js';
 import { showGenericClaimPanel } from './generic-panel.js';
 import { buildCurveClaimPreview } from './curve-preview.js';
+import { buildConcentratorClaimPreview } from './concentrator-preview.js';
+import { buildYieldBasisClaimPreview } from './yieldbasis-preview.js';
 import { buildVelodromeGenericPreview, executeVelodromeClaimGeneric } from './velodrome-preview.js';
 import { lastVelodromePositions } from '../protocols/velodrome.js';
 import { buildDemoVelodromeClaimPreview, buildVelodromeClaimPreview, demoExecuteVelodromeClaim, demoVelodromeChains } from '../velodrome/claim.js';
@@ -194,6 +196,32 @@ export async function claimToMainnetDemo(protoId) {
     });
     return;
   }
+  if (protoId === 'yieldbasis') {
+    uiLog('claim', 'yieldbasis claim started', { demo: true });
+    const yieldBasisSub = buildDemoResults().yieldbasis;
+    const preview = buildYieldBasisClaimPreview(yieldBasisSub, { demo: true });
+    await showGenericClaimPanel(preview, async (_execPreview, onStep) => {
+      onStep?.(0, 'active');
+      await new Promise((r) => setTimeout(r, 900 + Math.random() * 700));
+      onStep?.(0, 'done');
+      uiLog('claim', 'yieldbasis claim complete', { demo: true, delivered: money(yieldBasisSub.claimSummary) });
+    });
+    return;
+  }
+  if (protoId === 'concentrator') {
+    uiLog('claim', 'concentrator claim started', { demo: true });
+    // Same reasoning and same shape as Curve's demo branch above: drives the REAL panel and the
+    // REAL preview builder, only the sending is synthetic.
+    const concentratorResult = buildDemoResults().concentrator;
+    const preview = buildConcentratorClaimPreview(concentratorResult, { demo: true });
+    await showGenericClaimPanel(preview, async (_execPreview, onStep) => {
+      onStep?.(0, 'active');
+      await new Promise((r) => setTimeout(r, 900 + Math.random() * 700));
+      onStep?.(0, 'done');
+      uiLog('claim', 'concentrator claim complete', { demo: true, delivered: money(concentratorResult.claimSummary) });
+    });
+    return;
+  }
   log(`Claim to mainnet: consolidation isn't built yet for this protocol — coming soon`, 'info');
 }
 
@@ -244,6 +272,36 @@ export async function claimToMainnet(protoId) {
       return;
     }
     await showGenericClaimPanel(buildVelodromeGenericPreview(preview), executeVelodromeClaimGeneric);
+    return;
+  }
+  if (protoId === 'yieldbasis') {
+    const yieldBasisSub = portfolioResults?.yieldbasis?.subsections?.find((s) => s.id === 'veyb');
+    const preview = buildYieldBasisClaimPreview(yieldBasisSub);
+    if (!preview) {
+      uiWarn('claim', 'yieldbasis card snapshot missing — cannot build a review', { haveSubsection: !!yieldBasisSub });
+      log('No claimable veYB figure to review yet — refresh the portfolio and try again.', 'info');
+      return;
+    }
+    const confirmed = await showGenericClaimPanel(preview, executeYieldBasisClaim);
+    uiLog('claim', 'yieldbasis panel closed', { confirmed });
+    return;
+  }
+  if (protoId === 'concentrator') {
+    /* Gate deliberately NOT enforced here — same reasoning as Curve's above: building the preview
+       reads a real chain figure and signs nothing. Enforced on the panel's confirm button, plus
+       executeConcentratorClaim()'s own refusal below. */
+    uiLog('claim', 'concentrator claim started', { demo: false, chain: chainName(state.chainId) });
+    // `concentratorResult` is the protocol's own top-level card result — no subsections, unlike
+    // Curve/Yield Basis (see concentrator-preview.js's header).
+    const concentratorResult = portfolioResults?.concentrator;
+    const preview = buildConcentratorClaimPreview(concentratorResult);
+    if (!preview) {
+      uiWarn('claim', 'concentrator card snapshot missing — cannot build a review', { haveResult: !!concentratorResult });
+      log('No claimable veCTR figure to review yet — refresh the portfolio and try again.', 'info');
+      return;
+    }
+    const confirmed = await showGenericClaimPanel(preview, executeConcentratorClaim);
+    uiLog('claim', 'concentrator panel closed', { confirmed });
     return;
   }
   if (protoId !== 'curve') {
@@ -337,6 +395,97 @@ async function executeCurveClaim(execPreview, onStep) {
     throw err;
   } finally {
     setClaimBusy('curve', false);
+  }
+}
+
+/* Concentrator's executor — same single-step shape as Curve (claim straight to mainnet, one
+   transaction, no subsections), and the same selector: FeeDistributor.claim(address), same 4-byte
+   selector as Curve's own (see the CONCENTRATOR comment in protocols/config.js). The only real
+   difference from executeCurveClaim is the reward-token symbol carried through in the preview,
+   read live rather than a constant — see concentrator-preview.js's header. */
+async function executeConcentratorClaim(execPreview, onStep) {
+  if (claimBlocked(false)) {
+    uiLog('claim', 'blocked by release gate', { protocol: 'concentrator', label: RELEASE_LABEL });
+    throw new Error(RELEASE_NOTICE);
+  }
+  const { nativeAmount, claimedUsd } = execPreview.concentrator || {};
+  setClaimBusy('concentrator', true);
+  try {
+    if (state.chainId !== ETH_MAINNET) {
+      uiLog('claim', 'concentrator switching chain', { from: chainName(state.chainId), to: chainName(ETH_MAINNET) });
+      setClaimProgress('concentrator', null, 'Switching wallet to Ethereum mainnet…');
+      log('switching wallet to Ethereum mainnet to claim...', 'info');
+      await switchChain(ETH_MAINNET);
+    }
+    setClaimProgress('concentrator', null, 'Waiting for wallet confirmation…');
+    onStep?.(0, 'active');
+    const data = CONCENTRATOR.CLAIM + encodeAddress(state.account);
+    log('sending veCTR claim (Ethereum mainnet)...', 'info');
+    const txHash = await rpc('eth_sendTransaction', [{ from: state.account, to: CONCENTRATOR.feeDistributor, data }]);
+    log(`claim transaction sent: ${txHash}, waiting for confirmation...`, 'info');
+    uiLog('claim', 'concentrator tx sent', { tx: addr(txHash) });
+    setClaimProgress('concentrator', null, 'Waiting for confirmation…');
+    await waitForReceipt(txHash, ETH_MAINNET);
+    log(`claim transaction confirmed: ${txHash}`, 'ok');
+    onStep?.(0, 'done');
+    uiLog('claim', 'concentrator claim complete', {
+      demo: false,
+      tx: addr(txHash),
+      delivered: money(claimedUsd),
+      amount: money(nativeAmount),
+    });
+  } catch (err) {
+    logErr('veCTR claim failed', err);
+    onStep?.(0, 'error');
+    uiWarn('claim', 'concentrator claim failed', { error: err?.message, rejected: isUserRejection(err) });
+    throw err;
+  } finally {
+    setClaimBusy('concentrator', false);
+  }
+}
+
+/* Yield Basis's executor — same single-step shape as Curve (claim straight to mainnet,
+   no intermediate steps). The claimList and total delivered are carried through from the
+   preview so the success popup can show what actually landed. */
+async function executeYieldBasisClaim(execPreview, onStep) {
+  if (claimBlocked(false)) {
+    uiLog('claim', 'blocked by release gate', { protocol: 'yieldbasis', label: RELEASE_LABEL });
+    throw new Error(RELEASE_NOTICE);
+  }
+  const { claimList, claimedUsd } = execPreview.yieldbasis || {};
+  setClaimBusy('yieldbasis', true);
+  try {
+    if (state.chainId !== ETH_MAINNET) {
+      uiLog('claim', 'yieldbasis switching chain', { from: chainName(state.chainId), to: chainName(ETH_MAINNET) });
+      setClaimProgress('yieldbasis', null, 'Switching wallet to Ethereum mainnet…');
+      log('switching wallet to Ethereum mainnet to claim...', 'info');
+      await switchChain(ETH_MAINNET);
+    }
+    setClaimProgress('yieldbasis', null, 'Waiting for wallet confirmation…');
+    onStep?.(0, 'active');
+    // epoch_count=50, use_vest=false — the contract's defaults (see config.js YIELD_BASIS comment)
+    const data = YIELD_BASIS.CLAIM + encodeAddress(state.account) + '0'.repeat(64) + '0'.repeat(64);
+    log(`sending veYB claim (${claimList?.length || 0} tokens, Ethereum mainnet)...`, 'info');
+    const txHash = await rpc('eth_sendTransaction', [{ from: state.account, to: YIELD_BASIS.feeDistributor, data }]);
+    log(`claim transaction sent: ${txHash}, waiting for confirmation...`, 'info');
+    uiLog('claim', 'yieldbasis tx sent', { tx: addr(txHash) });
+    setClaimProgress('yieldbasis', null, 'Waiting for confirmation…');
+    await waitForReceipt(txHash, ETH_MAINNET);
+    log(`claim transaction confirmed: ${txHash}`, 'ok');
+    onStep?.(0, 'done');
+    uiLog('claim', 'yieldbasis claim complete', {
+      demo: false,
+      tx: addr(txHash),
+      delivered: money(claimedUsd),
+      tokens: claimList?.map((t) => t.symbol).join(','),
+    });
+  } catch (err) {
+    logErr('veYB claim failed', err);
+    onStep?.(0, 'error');
+    uiWarn('claim', 'yieldbasis claim failed', { error: err?.message, rejected: isUserRejection(err) });
+    throw err;
+  } finally {
+    setClaimBusy('yieldbasis', false);
   }
 }
 
@@ -534,7 +683,7 @@ export function startClaimCooldown(protoId, seconds) {
 // early-return for these ids used to mean in practice (a console log nobody but a developer
 // would ever see). Read by both the real and demo-mode paths, since it's a statement about what
 // this app can DO, not about which wallet is connected.
-export const CLAIM_TO_MAINNET_SUPPORTED = new Set(['aerodrome', 'curve', 'velodrome']);
+export const CLAIM_TO_MAINNET_SUPPORTED = new Set(['aerodrome', 'curve', 'velodrome', 'yieldbasis', 'concentrator']);
 
 // Small dropdown (Claim to mainnet / Claim to another chain), reusing the
 // same .dropdown-menu/.dropdown-item styling the header's Connect menu

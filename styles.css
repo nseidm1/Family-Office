@@ -1321,6 +1321,18 @@ dialog .body { padding: 12px; display: grid; gap: 6px; }
   details.card > summary { flex-wrap: wrap; gap: 8px; }
   .summary-tools { flex-shrink: 1; min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
   .summary-tools .portfolio-total { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+  /* FA-151, one nesting level deeper than FA-146's fix above and the same cause: a subsection
+     row (.protocol-sub — currently only Curve's veCRV/Votemarket split) whose claim span can
+     carry the "not yet claimable" badge (.protocol-sub-badge, deliberately white-space: nowrap
+     so the badge text itself never breaks mid-word). At 320px — the narrowest phone width still
+     in real use — "Votemarket" + "$22.90" + that badge cannot fit on one row even at min-content,
+     because the badge's nowrap floor is wider than the space left after the name and caret, and
+     pushed the DOCUMENT 2px wider. Same remedy as the card-level summary: let the row wrap so the
+     claim (badge included) drops to its own line with the full row's width to expand into,
+     instead of trying to hold at its unshrinkable minimum on the first line. */
+  .protocol-sub > summary { flex-wrap: wrap; }
+  .protocol-sub-claim { flex-shrink: 1; min-width: 0; }
 }
 
 /* Touch targets, on the same reasoning as the board's: a coarse pointer wants

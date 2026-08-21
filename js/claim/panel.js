@@ -1,6 +1,7 @@
 import { applyTokenIcon } from '../aerodrome/icons.js';
 import { fetchAerodromeTokenDecimals, quoteAerodromeBridgeLeg, resolveAerodromeToken, usdValueOfSwapStep } from '../aerodrome/routing.js';
 import { AERODROME, AERODROME_CLAIM } from '../protocols/config.js';
+import { refreshCash } from '../protocols/cash.js';
 import { ICONS } from '../protocols/icon-data.js';
 import { MODE } from '../core/chains.js';
 import { showTxStepToast, showTxSuccessPopup } from '../tx/feedback.js';
@@ -1549,6 +1550,11 @@ export function showClaimPreviewPanel(preview, executeClaim) {
         }
         successDetails.push({ k: 'Transactions', v: String(stepRows.length) });
         cleanup(true);
+        // Funds just landed — the Cash card still shows the pre-claim read until someone hits its
+        // own Refresh button, so kick it here rather than leaving that stale. Fire-and-forget:
+        // refreshCash() has its own in-flight guard and demo-path handling, and nothing in this
+        // flow depends on the Cash read finishing.
+        refreshCash();
         showTxSuccessPopup({
           title: 'Claim complete — funds delivered',
           sub: preview.__demo

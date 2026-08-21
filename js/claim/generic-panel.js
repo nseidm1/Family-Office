@@ -5,9 +5,10 @@
  * machinery, and neither could serve a protocol that claims in ONE transaction on mainnet — which is
  * four of the six protocols (Curve, Yield Basis, Clever, Concentrator). Adding a claim flow meant
  * building another panel; the point of this file is that it should mean writing a PREVIEW.
- * Curve and Velodrome are migrated (see `curve-preview.js`, `velodrome-preview.js`, and
+ * Curve, Velodrome, Yield Basis and Concentrator are migrated (see `curve-preview.js`,
+ * `velodrome-preview.js`, `yieldbasis-preview.js`, `concentrator-preview.js`, and
  * `velodrome-panel.js` is deleted); `panel.js` (Aerodrome) is the one protocol still on its own
- * panel, and TASKS.md #3 tracks moving it here last, deliberately, as the riskiest of the three.
+ * panel, and TASKS.md #3 tracks moving it here last, deliberately, as the riskiest of the five.
  *
  * DESIGNED AGAINST CURVE FIRST, DELIBERATELY. FA-003 absorbed FA-004 precisely because designing this
  * around the two existing multi-step flows would have produced a "generic" panel that was really just
@@ -66,6 +67,7 @@
 
 import { applyTokenIcon } from '../aerodrome/icons.js';
 import { execStepLabelKey } from './ledger.js';
+import { refreshCash } from '../protocols/cash.js';
 import { showTxStepToast, showTxSuccessPopup } from '../tx/feedback.js';
 import { log, formatUnits, short, spinnerNode, usd } from '../core/utils.js';
 import { RELEASE_BTN_LABEL, RELEASE_NOTICE, claimBlocked } from '../core/release.js';
@@ -487,6 +489,11 @@ export function showGenericClaimPanel(preview, executeClaim) {
           delivered: money(delivered),
         });
         cleanup(true);
+        // Funds just landed — the Cash card still shows the pre-claim read until someone hits its
+        // own Refresh button, so kick it here rather than leaving that stale. Fire-and-forget:
+        // refreshCash() has its own in-flight guard and demo-path handling, and nothing in this
+        // flow depends on the Cash read finishing.
+        refreshCash();
         showTxSuccessPopup({
           title: 'Claim complete — funds delivered',
           sub: preview.__demo

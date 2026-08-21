@@ -205,6 +205,19 @@ function mergeByVenft(into, from) {
   return into;
 }
 
+/* FA-122: a root reward that IS Optimism's own USDC needs no swap at all — buildExecSteps below
+   skips emitting a root-swap step for it. Any dollar figure derived from the root's claimed value
+   must skip charging it the swap cost too, or the ledger discounts money that was never spent on a
+   swap that never runs. ONE definition, used at construction (to attach `alreadyUsdcUsd` to the root
+   chain object, which the panel also reads to tell the user this money needs no swap) and in
+   buildExecSteps' own filter, so the two can never disagree about which token counts. */
+function isRootUsdcAddr(addr) {
+  return String(addr).toLowerCase() === String(VELODROME_CLAIM.root.usdc).toLowerCase();
+}
+function sumRootUsdc(tokens) {
+  return (tokens || []).filter((t) => isRootUsdcAddr(t.addr)).reduce((sum, t) => sum + (t.usd || 0), 0);
+}
+
 /* ---------- shared step-list construction ---------- */
 
 // Built once, here, and used by the real preview, the demo preview and the executor alike, so the
@@ -230,7 +243,7 @@ function buildExecSteps(chains, { mainnet }) {
     if (c.isRoot) {
       steps.push({ kind: 'root-claim', chainId: c.chainId, group: 'root', parts: [TXT('claim rewards')] });
       for (const t of c.tokens) {
-        if (String(t.addr).toLowerCase() === String(VELODROME_CLAIM.root.usdc).toLowerCase()) continue;
+        if (isRootUsdcAddr(t.addr)) continue;
         steps.push({
           kind: 'root-swap',
           token: t.addr,
@@ -359,7 +372,13 @@ function buildTotals(chains, { mainnet, rootQuote = null, mainnetQuote = null })
   const leafBridgedUsd = rootQuote
     ? Number(rootQuote.amountOut) / 1e6
     : routableLeafUsd * (1 - LEAF_SWAP_COST) * (1 - BRIDGE_COST) * (1 - ROOT_SWAP_COST);
-  const rootConsolidatedUsd = rootClaimedUsd * (1 - ROOT_SWAP_COST);
+  /* FA-122: some of the root's OWN rewards can already BE USDC (Velodrome pays some fee/bribe pools
+     out in USDC directly) — buildExecSteps skips a root-swap step for that portion entirely, so it
+     must not be charged ROOT_SWAP_COST here either. `alreadyUsdcUsd` is attached to the root chain
+     object at construction (see buildVelodromeClaimPreview/demoVelodromeChains); only the remainder
+     is ever actually swapped. */
+  const rootAlreadyUsdcUsd = rootChains.reduce((sum, c) => sum + (c.alreadyUsdcUsd || 0), 0);
+  const rootConsolidatedUsd = rootAlreadyUsdcUsd + (rootClaimedUsd - rootAlreadyUsdcUsd) * (1 - ROOT_SWAP_COST);
   const usdcUsd = leafBridgedUsd + rootConsolidatedUsd + lifiUsdcUsd;
 
   const crvUsdUsd = (mainnetQuote ? Number(mainnetQuote.crvUsdOut) / 1e18 : usdcUsd * (1 - MAINNET_BRIDGE_COST))
@@ -383,6 +402,7 @@ function buildTotals(chains, { mainnet, rootQuote = null, mainnetQuote = null })
     unroutableUsd,
     acrossDirectUsd,
     lifiUsdcUsd,
+    alreadyUsdcUsd: rootAlreadyUsdcUsd,
     root: { veloUsd, usdcUsd },
     mainnet: mainnet ? { crvUsdUsd } : null,
     deliveredUsd: mainnet ? crvUsdUsd : usdcUsd,
@@ -413,7 +433,7 @@ function assemble(chains, { demo, mainnet = true, rootQuote = null, mainnetQuote
     totals: {
       claimedUsd: allClaimedUsd, claimableAfterDustUsd: t.claimedUsd, dustUsd,
       unroutableUsd: t.unroutableUsd, acrossDirectUsd: t.acrossDirectUsd,
-      lifiUsdcUsd: t.lifiUsdcUsd, deliveredUsd: t.deliveredUsd,
+      lifiUsdcUsd: t.lifiUsdcUsd, deliveredUsd: t.deliveredUsd, alreadyUsdcUsd: t.alreadyUsdcUsd,
     },
   };
 }
@@ -597,7 +617,12 @@ export async function buildVelodromeClaimPreview(positions, onProgress = () => {
       });
       const rootUsd = tokens.reduce((sum, t) => sum + (t.usd || 0), 0);
       // Root rewards need no bridge, so the dust floor that pays for a bridge hop does not apply.
-      chains.push({ chainId: VELODROME.chainId, isRoot: true, tokens, dust: false, veloOut: 0n, quoted: true, rootUsd, byVenft: rootByVenft });
+      // alreadyUsdcUsd: FA-122 — the slice of rootUsd that is already Optimism's own USDC, so the
+      // panel can tell the user it needs no swap rather than folding it silently into "will swap".
+      chains.push({
+        chainId: VELODROME.chainId, isRoot: true, tokens, dust: false, veloOut: 0n, quoted: true,
+        rootUsd, byVenft: rootByVenft, alreadyUsdcUsd: sumRootUsdc(tokens),
+      });
     }
   } catch (err) {
     logErr('Velodrome claim preview: Optimism root failed', err);
@@ -644,7 +669,15 @@ export async function buildVelodromeClaimPreview(positions, onProgress = () => {
       const rootOwnUsd = chains
         .filter((c) => c.isRoot)
         .reduce((sum, c) => sum + (c.tokens || []).reduce((s2, t) => s2 + (t.usd || 0), 0), 0);
-      const rootOwnUsdc6 = BigInt(Math.max(0, Math.round(rootOwnUsd * (1 - ROOT_SWAP_COST) * 1e6)));
+      // FA-122: the part of rootOwnUsd already sitting on Optimism as USDC never gets swapped (see
+      // buildExecSteps' root-swap skip), so it must not be discounted by ROOT_SWAP_COST here either
+      // — otherwise the bridge quote is built against slightly less USDC than will actually exist.
+      const rootOwnAlreadyUsdc = chains
+        .filter((c) => c.isRoot)
+        .reduce((sum, c) => sum + (c.alreadyUsdcUsd || 0), 0);
+      const rootOwnUsdc6 = BigInt(Math.max(0, Math.round(
+        (rootOwnAlreadyUsdc + (rootOwnUsd - rootOwnAlreadyUsdc) * (1 - ROOT_SWAP_COST)) * 1e6
+      )));
       const lifiUsdc6 = chains.reduce((sum, c) => sum + (c.lifiUsdc6 || 0n), 0n);
       const acrossQuote = await fetchAcrossSuggestedFees((rootQuote?.amountOut || 0n) + rootOwnUsdc6 + lifiUsdc6, origin);
       const dy = await chainCall(ETH_MAINNET, CURVE_CRVUSD_USDC_POOL,
@@ -703,11 +736,8 @@ export function demoVelodromeChains() {
     demoPromise = priceTokensUsd([VELODROME.token], VELODROME.priceChain)
       .then((priced) => {
         const veloPrice = priced[VELODROME.token]?.price ?? null;
-        return demoLeafPool().map((leaf) => ({
-          chainId: leaf.chainId,
-          isRoot: !!leaf.isRoot,
-          dust: !!leaf.dustDemo,
-          tokens: leaf.tokens.map((t) => {
+        return demoLeafPool().map((leaf) => {
+          const tokens = leaf.tokens.map((t) => {
             // A dust chain must land UNDER the threshold and a live chain comfortably over it, so
             // the demo reliably shows both paths regardless of what VELO happens to cost today.
             const usdValue = leaf.dustDemo ? 0.4 + Math.random() * 2 : 40 + Math.random() * 260;
@@ -720,8 +750,17 @@ export function demoVelodromeChains() {
               amount: BigInt(Math.round((usdValue / unit) * 10 ** t.decimals)),
               usd: usdValue,
             };
-          }),
-        }));
+          });
+          return {
+            chainId: leaf.chainId,
+            isRoot: !!leaf.isRoot,
+            dust: !!leaf.dustDemo,
+            tokens,
+            // FA-122: mirrors the real preview's root chain, so demo mode exercises the same
+            // "already USDC, no swap" note/discount the real flow does.
+            ...(leaf.isRoot ? { alreadyUsdcUsd: sumRootUsdc(tokens) } : {}),
+          };
+        });
       })
       .catch((err) => {
         logErr('demo mode: live price lookup for Velodrome failed', err);
@@ -838,6 +877,21 @@ async function waitForBridgedVelo(account, target) {
  * on Optimism before consolidating, with a bounded timeout, and says plainly where the funds are if
  * it gives up. Funds sitting on an intermediate chain must never be silent; that is the worst
  * outcome this flow has and TASKS.md calls it out explicitly.
+ *
+ * FA-041: root-swap and root-consolidate can both be swapping the SAME VELO balance on Optimism —
+ * root-swap for the root's own claimed VELO reward, root-consolidate for what the leaves bridge in —
+ * and `erc20Balance()` cannot tell one dollar of VELO from another. root-swap always runs first (it
+ * is emitted while walking the root chain, root-consolidate only after the whole chain loop), so if
+ * it drained the balance before any leaf VELO had a chance to arrive, root-consolidate's wait target
+ * (veloOnRootBefore + bridgedFromLeaves, fixed before anything executed) could include VELO that had
+ * already been swapped away — a target that can never be reached again, so the wait runs the full 15
+ * minutes and reports a misleading timeout. Below, root-swap SKIPS VELO whenever a root-consolidate
+ * step is present in this run: consolidate already re-reads the real balance and swaps ALL of it,
+ * root's own claim included, so deferring costs nothing and removes the race outright. When no
+ * root-consolidate step is present — only Optimism selected, no leaf — root-swap still handles VELO
+ * itself, since nothing else will (see FA-034's amendment on this card). This changes execution
+ * ordering only; `buildExecSteps()` and its selection semantics in claim/velodrome-preview.js are
+ * unchanged, so the two files do not need to move together for this fix.
  */
 export async function executeVelodromeClaim(execPreview, onStep) {
   /* Refuses on its own authority, exactly as executeAerodromeClaim() does, rather than trusting a
@@ -852,6 +906,9 @@ export async function executeVelodromeClaim(execPreview, onStep) {
   const steps = execPreview.execSteps || [];
   const account = state.account;
   if (!account) throw new Error('no wallet account connected');
+
+  // See the FA-041 paragraph above — this is what root-swap checks to decide whether to skip VELO.
+  const hasRootConsolidate = steps.some((s) => s.kind === 'root-consolidate');
 
   /* A step that cannot be executed safely must stop the run BEFORE anything is signed, not halfway
      through. An unquoted token has no minOut, and this flow refuses to send a swap without one
@@ -1080,6 +1137,15 @@ export async function executeVelodromeClaim(execPreview, onStep) {
       const symbol = step.kind === 'root-consolidate'
         ? 'VELO'
         : ((chain?.tokens || []).find((t) => String(t.addr).toLowerCase() === String(tokenAddr).toLowerCase())?.symbol || short(tokenAddr));
+
+      // FA-041: defer the root's own VELO to root-consolidate rather than swapping it here, so the
+      // two steps can never race over the same balance — see this function's header.
+      if (step.kind === 'root-swap' && hasRootConsolidate
+        && String(tokenAddr).toLowerCase() === String(VELODROME_CLAIM.root.velo).toLowerCase()) {
+        log('Optimism: deferring VELO → USDC to the consolidation step, which will convert the root\'s own claim together with whatever the leaves bridge in', 'info');
+        finishStep();
+        continue;
+      }
 
       /* The consolidation step waits for the bridge to actually DELIVER before swapping. A
          `sendToken` receipt confirms the send, not the arrival — Hyperlane delivery is a separate

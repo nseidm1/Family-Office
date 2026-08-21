@@ -121,14 +121,10 @@ export function buildDemoResults() {
         { symbol: 'yb-WETH', amount: '0.0092', usd: 24.60 },
       ],
     },
-    // Clever (veCLEV) and Concentrator (veCTR) are being added as real
-    // PROTOCOLS entries by sibling agents on their own branches — these fake
-    // entries are a forward-reference so buildDemoResults()/startDemoMode()
-    // need no further changes once PROTOCOLS grows to include 'clever'/
-    // 'concentrator' ids. Clever's fee distributor pays out in CVX+FRAX (its
-    // clevCVX/clevFRAX vault rewards); Concentrator's actual reward-token
-    // shape is still being finalized by its own agent, so a single plausible
-    // ETH claim stands in as a reasonable default.
+    // Clever (veCLEV) is being added as a real PROTOCOLS entry by a sibling agent on its own
+    // branch — this fake entry is a forward-reference so buildDemoResults()/startDemoMode() need
+    // no further changes once PROTOCOLS grows to include the 'clever' id. Its fee distributor
+    // pays out in CVX+FRAX (its clevCVX/clevFRAX vault rewards).
     clever: {
       status: 'ok',
       claimSummary: usd(28.60),
@@ -142,6 +138,10 @@ export function buildDemoResults() {
         { symbol: 'FRAX', amount: '10.2000', usd: 10.20 },
       ],
     },
+    // Concentrator's claim flow shipped (FA-038) — this now matches fetchConcentrator()'s real
+    // shape exactly (docs/js/protocols/concentrator.js): a single `Claimable ${symbol}` row, no
+    // claimList (concentrator-preview.js reads the row by 'Claimable ' prefix, same as Curve's
+    // preview reads its own single row, never a claimList).
     concentrator: {
       status: 'ok',
       claimSummary: usd(19.75),
@@ -149,9 +149,7 @@ export function buildDemoResults() {
       rows: [
         { k: 'CTR locked', v: '4,100.0000 CTR' },
         { k: 'Locked until', v: demoUnlock(300), sensitive: false },
-      ],
-      claimList: [
-        { symbol: 'ETH', amount: '0.0082', usd: 19.75 },
+        { k: 'Claimable ETH', v: '0.0082 ETH' },
       ],
     },
   };

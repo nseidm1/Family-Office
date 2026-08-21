@@ -75,10 +75,12 @@ export function buildVelodromeGenericPreview(raw) {
       usd: chainUsd,
       selected: !c.dust,
       // Says the amount AND the reason — a skipped chain with no figure is the silent omission the
-      // dust policy exists to rule out.
+      // dust policy exists to rule out. FA-122: a root claim that is partly already USDC on Optimism
+      // gets the same treatment — the panel names the amount that needs no swap at all, rather than
+      // folding it silently into "will be swapped".
       note: c.dust
         ? `Not worth the gas — ${usd(chainUsd)} would cost more to claim and bridge than it is worth. Tick to claim anyway.`
-        : undefined,
+        : (c.alreadyUsdcUsd > 0.005 ? `${usd(c.alreadyUsdcUsd)} of this is already USDC on Optimism — no swap needed` : undefined),
       warn: !!c.dust,
       /* The root (Optimism) leg does not bridge and does not touch VELO for tokens that aren't
          already VELO — it claims and swaps straight to USDC on the chain it is already on. The old

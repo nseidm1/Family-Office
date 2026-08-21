@@ -130,7 +130,20 @@
    docking beside the portfolio card when there isn't room. */
 @media (max-width: 760px) {
   .claim-preview-columns { flex-direction: column; overflow-y: auto; }
-  .claim-preview-body { overflow-y: visible; }
+  /* `.claim-preview-body` inherits `flex: 1 1 auto` + `min-height: 0` from the base (desktop,
+     fixed-row-height, independently-scrolling) rule above and was never given anything else here —
+     so once stacked, the browser divided `.claim-preview-columns`'s own (already limited) height
+     between body and steps-col by SHRINKING each below its own content, rather than growing both to
+     their natural size and letting `.claim-preview-columns`'s own overflow-y:auto scroll the excess.
+     steps-col below already had `flex: 0 0 auto`; body did not, and that lone gap is what let it be
+     crushed. Measured live (FA-102): a 12-transaction Aerodrome claim reported a 32px clientHeight
+     for this element against a 1070px scrollHeight. Scoped to `.claim-preview-columns >` because
+     `.claim-preview-body` means something DIFFERENT in generic-panel.js's build (Velodrome/Yield
+     Basis/Concentrator): there it is the OUTER wrapper — `.claim-preview-columns` sits INSIDE it, not
+     the other way around — and must stay `flex: 1 1 auto` to remain the single scrolling region; the
+     child combinator here matches only panel.js's shape (Curve/Aerodrome), where body and steps-col
+     are columns' own direct children. */
+  .claim-preview-columns > .claim-preview-body { flex: 0 0 auto; overflow-y: visible; }
   .claim-preview-steps-col {
     flex: 0 0 auto;
     width: auto;
@@ -894,4 +907,70 @@
 
 .velo-claim-panel .velo-right-col {
   flex: 1.1 1 0;
+}
+
+/* ---------- phone width: claim preview panel becomes a full-screen sheet (FA-102) ---------- */
+
+/* Completes the stacking fix above for the OTHER panel shape. generic-panel.js (Velodrome/Yield
+   Basis/Concentrator) reuses `.claim-preview-steps-col` for its own two panes (`left`/`right`,
+   direct children of `.claim-preview-columns`, same as panel.js's shape) — but `.velo-claim-panel
+   .claim-preview-steps-col`/`.velo-right-col` above are TWO-class selectors, so they kept winning
+   over the single-class stacking fix regardless of viewport width, at every width, not only above
+   760px where they're meant to. Repeated here at the same (two-class) specificity, after those
+   rules, so source order settles it in this file's favour. Measured live (FA-102): both panes
+   reported a 32px clientHeight against 776px/315px of actual content at 390px width. */
+@media (max-width: 760px) {
+  .velo-claim-panel .claim-preview-steps-col,
+  .velo-claim-panel .velo-right-col {
+    flex: 0 0 auto;
+    min-width: 0;
+  }
+  /* The transaction list's own independent scroll (see .velo-steps-scroll's own comment above) only
+     makes sense when its container's height is fixed by something else — the side-by-side desktop
+     row. With `.velo-right-col` now sized to its own natural content (immediately above), there is
+     nothing left to scroll independently within; taking its natural height too means the ONE outer
+     scroll region (`.claim-preview-body`, generic-panel.js's direct panel child) is the only thing
+     that scrolls, same as every other section here. */
+  .velo-steps-scroll {
+    flex: 0 0 auto;
+    overflow-y: visible;
+  }
+}
+
+/* True phone width. The panel above is still a floating, INSET card even once its content correctly
+   scrolls instead of being crushed — rounded corners, a border, and a 40px margin budget on every
+   side (`.claim-preview-panel`'s own `max-width`/`max-height`, near the top of this file). That is a
+   deliberate choice at tablet-narrow widths, where there is room to spare; on a real phone that
+   margin budget is real content space. This is the "stop being a floating modal, become a
+   full-screen sheet" half of FA-102's ask — the same shape the board's own card dialog took in
+   FA-085: edge to edge, no chrome around it.
+   Nothing here makes the header/banner/footer "sticky", and none of them need to be: they are
+   already the panel's OWN flex siblings, sitting OUTSIDE the one section that scrolls
+   (`.claim-preview-columns` for panel.js's shape, `.claim-preview-body` for generic-panel.js's —
+   see both fixes above) rather than being nested inside it, so they were always going to stay in
+   place once that section stopped being crushed. What this block actually does is two things: drop
+   the floating-card framing now there is no room to spare for it, and give the panel a genuine,
+   definite viewport height (`position: fixed; inset: 0`) — an `auto`-height panel gives its flex
+   children nothing to grow into, which is a large part of what let them all end up sized to content
+   instead in the first place (see the very first comment in this section). */
+@media (max-width: 720px) {
+  .claim-preview-panel,
+  .velo-claim-panel {
+    position: fixed;
+    inset: 0;
+    transform: none;
+    width: 100%;
+    max-width: 100%;
+    height: 100%;
+    max-height: 100%;
+    border-radius: 0;
+    border: 0;
+    box-shadow: none;
+  }
+
+  /* The home-indicator strip on a gesture-navigation phone overlaps a bottom-pinned action row —
+     same fix the board's own sheet dialog uses (FA-085). */
+  .claim-preview-footer {
+    padding-bottom: calc(14px + env(safe-area-inset-bottom));
+  }
 }
