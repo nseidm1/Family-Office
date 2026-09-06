@@ -3,12 +3,14 @@
  * WHY THIS EXISTS (TASKS.md FA-003). There were two panels: `panel.js` (Aerodrome) and
  * `velodrome-panel.js`. Both rendered the same visual language and duplicated the same execution
  * machinery, and neither could serve a protocol that claims in ONE transaction on mainnet — which is
- * four of the six protocols (Curve, Yield Basis, Clever, Concentrator). Adding a claim flow meant
+ * three of the six protocols (Curve, Yield Basis, Concentrator), and Clever in one to two, one per
+ * claimable FeeDistributor. Adding a claim flow meant
  * building another panel; the point of this file is that it should mean writing a PREVIEW.
- * Curve, Velodrome, Yield Basis and Concentrator are migrated (see `curve-preview.js`,
- * `velodrome-preview.js`, `yieldbasis-preview.js`, `concentrator-preview.js`, and
+ * Curve, Velodrome, Yield Basis, Concentrator and Clever are migrated (see `curve-preview.js`,
+ * `velodrome-preview.js`, `yieldbasis-preview.js`, `concentrator-preview.js`, `clever-preview.js`
+ * — the one whose execSteps carry a `rewardLabel`, one claim per CLAIMABLE FeeDistributor — and
  * `velodrome-panel.js` is deleted); `panel.js` (Aerodrome) is the one protocol still on its own
- * panel, and TASKS.md #3 tracks moving it here last, deliberately, as the riskiest of the five.
+ * panel, and TASKS.md #3 tracks moving it here last, deliberately, as the riskiest of the six.
  *
  * DESIGNED AGAINST CURVE FIRST, DELIBERATELY. FA-003 absorbed FA-004 precisely because designing this
  * around the two existing multi-step flows would have produced a "generic" panel that was really just

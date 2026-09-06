@@ -1,7 +1,7 @@
 import { buildAerodromeClaimPreview, executeAerodromeClaim } from '../aerodrome/claim.js';
 import { buildDemoAerodromeClaimPreview, demoAerodromeTokens, demoExecuteAerodromeClaim } from '../aerodrome/demo.js';
 import { applyTokenIcon } from '../aerodrome/icons.js';
-import { AERODROME, CONCENTRATOR, CURVE, YIELD_BASIS } from '../protocols/config.js';
+import { AERODROME, CLEVER, CONCENTRATOR, CURVE, YIELD_BASIS } from '../protocols/config.js';
 import { ETH_MAINNET, chainName } from '../core/chains.js';
 import { buildDemoResults, demoActive } from '../demo/data.js';
 import { showTxSuccessPopup } from '../tx/feedback.js';
@@ -10,6 +10,7 @@ import { showClaimPreviewPanel } from './panel.js';
 import { showGenericClaimPanel } from './generic-panel.js';
 import { buildCurveClaimPreview } from './curve-preview.js';
 import { buildConcentratorClaimPreview } from './concentrator-preview.js';
+import { buildCleverClaimPreview } from './clever-preview.js';
 import { buildYieldBasisClaimPreview } from './yieldbasis-preview.js';
 import { buildVelodromeGenericPreview, executeVelodromeClaimGeneric } from './velodrome-preview.js';
 import { lastVelodromePositions } from '../protocols/velodrome.js';
@@ -222,6 +223,23 @@ export async function claimToMainnetDemo(protoId) {
     });
     return;
   }
+  if (protoId === 'clever') {
+    uiLog('claim', 'clever claim started', { demo: true });
+    /* Same shape as Concentrator's demo branch: the REAL panel and the REAL preview builder, only the
+       sending is synthetic — with ONE step per FeeDistributor (CVX, FRAX), each advanced in turn. */
+    const cleverResult = buildDemoResults().clever;
+    const preview = buildCleverClaimPreview(cleverResult, { demo: true });
+    await showGenericClaimPanel(preview, async (execPreview, onStep) => {
+      const steps = execPreview.execSteps?.length || 1;
+      for (let i = 0; i < steps; i += 1) {
+        onStep?.(i, 'active');
+        await new Promise((r) => setTimeout(r, 700 + Math.random() * 600));
+        onStep?.(i, 'done');
+      }
+      uiLog('claim', 'clever claim complete', { demo: true, delivered: money(cleverResult.claimSummary) });
+    });
+    return;
+  }
   log(`Claim to mainnet: consolidation isn't built yet for this protocol — coming soon`, 'info');
 }
 
@@ -302,6 +320,22 @@ export async function claimToMainnet(protoId) {
     }
     const confirmed = await showGenericClaimPanel(preview, executeConcentratorClaim);
     uiLog('claim', 'concentrator panel closed', { confirmed });
+    return;
+  }
+  if (protoId === 'clever') {
+    /* Gate deliberately NOT enforced here — same reasoning as Curve's and Concentrator's: building the
+       preview signs nothing. Enforced on the panel's confirm button, plus executeCleverClaim()'s own refusal. */
+    uiLog('claim', 'clever claim started', { demo: false, chain: chainName(state.chainId) });
+    // `cleverResult` is the protocol's own top-level card result — fetchClever()'s { claimList, claimUsd, … }.
+    const cleverResult = portfolioResults?.clever;
+    const preview = buildCleverClaimPreview(cleverResult);
+    if (!preview) {
+      uiWarn('claim', 'clever card snapshot missing — cannot build a review', { haveResult: !!cleverResult });
+      log('No claimable veCLEV figure to review yet — refresh the portfolio and try again.', 'info');
+      return;
+    }
+    const confirmed = await showGenericClaimPanel(preview, executeCleverClaim);
+    uiLog('claim', 'clever panel closed', { confirmed });
     return;
   }
   if (protoId !== 'curve') {
@@ -441,6 +475,59 @@ async function executeConcentratorClaim(execPreview, onStep) {
     throw err;
   } finally {
     setClaimBusy('concentrator', false);
+  }
+}
+
+/* Clever's executor (FA-13557) — Concentrator's shape with ONE DIFFERENCE, which is the whole reason it
+   is its own function: veCLEV fees come from TWO FeeDistributors (CLEVER.rewards: CVX and FRAX), so the
+   panel shows one step per distributor with a claimable balance and this sends one claim(address)
+   transaction per step, in CLEVER.rewards order, through the named constant CLEVER.CLAIM (same 4-byte
+   selector as Curve's and Concentrator's, verified in protocols/config.js). A step is matched to its
+   distributor by the `rewardLabel` KEY each step carries (clever-preview.js), never by position — the
+   executor re-derives nothing, so the two files cannot disagree. A failure mid-way leaves earlier
+   claims landed and later ones unsent; the error names the distributor that failed. */
+async function executeCleverClaim(execPreview, onStep) {
+  if (claimBlocked(false)) {
+    uiLog('claim', 'blocked by release gate', { protocol: 'clever', label: RELEASE_LABEL });
+    throw new Error(RELEASE_NOTICE);
+  }
+  const { claimedUsd } = execPreview.clever || {};
+  /* Steps carry `rewardLabel` (clever-preview.js), so each step is paired to its distributor by KEY: the
+     executor never re-derives the claimable set, so the two files cannot disagree on order. */
+  const steps = (execPreview.execSteps || []).filter((st) => st && st.rewardLabel);
+  const rewards = steps.map((st) => CLEVER.rewards.find((r) => r.label === st.rewardLabel)).filter(Boolean);
+  if (rewards.length !== steps.length) throw new Error('clever: a claim step names a reward CLEVER.rewards does not have');
+  setClaimBusy('clever', true);
+  let current = null;
+  try {
+    if (state.chainId !== ETH_MAINNET) {
+      uiLog('claim', 'clever switching chain', { from: chainName(state.chainId), to: chainName(ETH_MAINNET) });
+      setClaimProgress('clever', null, 'Switching wallet to Ethereum mainnet…');
+      log('switching wallet to Ethereum mainnet to claim...', 'info');
+      await switchChain(ETH_MAINNET);
+    }
+    for (let i = 0; i < rewards.length; i += 1) {
+      current = rewards[i];
+      setClaimProgress('clever', null, `Waiting for wallet confirmation (${current.label})…`);
+      onStep?.(i, 'active');
+      const data = CLEVER.CLAIM + encodeAddress(state.account);
+      log(`sending veCLEV ${current.label} claim (Ethereum mainnet)...`, 'info');
+      const txHash = await rpc('eth_sendTransaction', [{ from: state.account, to: current.feeDistributor, data }]);
+      log(`claim transaction sent: ${txHash}, waiting for confirmation...`, 'info');
+      uiLog('claim', 'clever tx sent', { tx: addr(txHash), reward: current.label });
+      setClaimProgress('clever', null, `Waiting for confirmation (${current.label})…`);
+      await waitForReceipt(txHash, ETH_MAINNET);
+      log(`claim transaction confirmed: ${txHash}`, 'ok');
+      onStep?.(i, 'done');
+    }
+    uiLog('claim', 'clever claim complete', { demo: false, delivered: money(claimedUsd), rewards: rewards.map((r) => r.label) });
+  } catch (err) {
+    logErr(`veCLEV ${current ? current.label : ''} claim failed`, err);
+    onStep?.(Math.max(0, rewards.indexOf(current)), 'error');
+    uiWarn('claim', 'clever claim failed', { error: err?.message, rejected: isUserRejection(err), reward: current?.label || null });
+    throw err;
+  } finally {
+    setClaimBusy('clever', false);
   }
 }
 
@@ -683,7 +770,7 @@ export function startClaimCooldown(protoId, seconds) {
 // early-return for these ids used to mean in practice (a console log nobody but a developer
 // would ever see). Read by both the real and demo-mode paths, since it's a statement about what
 // this app can DO, not about which wallet is connected.
-export const CLAIM_TO_MAINNET_SUPPORTED = new Set(['aerodrome', 'curve', 'velodrome', 'yieldbasis', 'concentrator']);
+export const CLAIM_TO_MAINNET_SUPPORTED = new Set(['aerodrome', 'curve', 'velodrome', 'yieldbasis', 'concentrator', 'clever']);
 
 // Small dropdown (Claim to mainnet / Claim to another chain), reusing the
 // same .dropdown-menu/.dropdown-item styling the header's Connect menu
