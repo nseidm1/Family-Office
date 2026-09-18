@@ -30,8 +30,23 @@ export function stablecoins() {
           { chainId: ARBITRUM, priceChain: 'arbitrum', chainName: 'Arbitrum', addr: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', decimals: 6 },
         ],
       },
-      { symbol: 'USDT', chains: [{ chainId: ETH_MAINNET, priceChain: 'ethereum', chainName: 'Ethereum', addr: '0xdAC17F958D2ee523a2206206994597C13D831ec7', decimals: 6 }] },
-      { symbol: 'DAI', chains: [{ chainId: ETH_MAINNET, priceChain: 'ethereum', chainName: 'Ethereum', addr: '0x6B175474E89094C44Da98b954EedeAC495271d0F', decimals: 18 }] },
+      {
+        symbol: 'USDT',
+        chains: [
+          { chainId: ETH_MAINNET, priceChain: 'ethereum', chainName: 'Ethereum', addr: '0xdAC17F958D2ee523a2206206994597C13D831ec7', decimals: 6 },
+          { chainId: BASE_MAINNET, priceChain: 'base', chainName: 'Base', addr: '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2', decimals: 6 },
+          { chainId: OPTIMISM, priceChain: 'optimism', chainName: 'Optimism', addr: '0x94b008aA00579c1307B0EF2c499aD98a8ce58e58', decimals: 6 },
+          { chainId: ARBITRUM, priceChain: 'arbitrum', chainName: 'Arbitrum', addr: '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9', decimals: 6 },
+        ],
+      },
+      {
+        symbol: 'DAI',
+        chains: [
+          { chainId: ETH_MAINNET, priceChain: 'ethereum', chainName: 'Ethereum', addr: '0x6B175474E89094C44Da98b954EedeAC495271d0F', decimals: 18 },
+          { chainId: BASE_MAINNET, priceChain: 'base', chainName: 'Base', addr: '0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb', decimals: 18 },
+          { chainId: OPTIMISM, priceChain: 'optimism', chainName: 'Optimism', addr: '0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1', decimals: 18 },
+          { chainId: ARBITRUM, priceChain: 'arbitrum', chainName: 'Arbitrum', addr: '0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1', decimals: 18 },
+      ]},
     ];
   }
   return _stablecoins;
