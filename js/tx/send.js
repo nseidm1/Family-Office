@@ -2,6 +2,7 @@ import { publicRpc } from '../rpc-waterfall.js';
 import { state } from '../core/state.js';
 import { log } from '../core/utils.js';
 import { rpc } from '../wallet-connect.js';
+import { checkSimulation } from './guard.js';
 
 export async function waitForReceipt(txHash, chainId) {
   for (let i = 0; i < 60; i++) {
@@ -14,8 +15,13 @@ export async function waitForReceipt(txHash, chainId) {
   }
   throw new Error(`timed out waiting for ${txHash} to confirm`);
 }
+const simOne = (tx) => ({ from: state.account, to: tx.to, data: tx.data });
+const simulate = (tx, chainId) => publicRpc(chainId, 'eth_simulateV1', [{ blockStateCalls: [{ calls: [simOne(tx)] }], traceTransfers: true }, 'latest']).catch(() => null);
+const guardSim = async (tx, chainId) => (tx.expect ? checkSimulation(tx.expect, await simulate(tx, chainId), state.account) : undefined);
+// FA-15127: a tx carrying the preview's expect is simulated first; a mismatch is refused, an RPC without eth_simulateV1 passes.
 
 export async function sendAndWait(tx) {
+  await guardSim(tx, tx.chainId);
   log(`${tx.label || 'transaction'}: sending...`, 'info');
   const txHash = await rpc('eth_sendTransaction', [{ from: state.account, to: tx.to, data: tx.data, value: tx.value ? '0x' + tx.value.toString(16) : undefined }]);
   log(`${tx.label || 'transaction'}: sent ${txHash}, waiting for confirmation...`, 'info');
@@ -75,6 +81,7 @@ export function isAtomicCapable(status) {
 // either way since a partial application here would be exactly the state this is meant to avoid).
 export async function sendBatchAndWait(calls, chainIdHex, label) {
   log(`${label}: sending as one batched (atomic) transaction — ${calls.length} calls...`, 'info');
+  for (const c of calls) await guardSim(c, chainIdHex);
   const { id } = await rpc('wallet_sendCalls', [{
     version: '2.0.0',
     chainId: chainIdHex,

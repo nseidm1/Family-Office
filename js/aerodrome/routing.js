@@ -3,6 +3,7 @@ import { ETH_MAINNET } from '../core/chains.js';
 import { chainCall, fetchJson, multicall } from '../rpc-waterfall.js';
 import { addrAt, decodeVeNFTArray, encodeAddress, encodeUint256, log, logErr, short, word } from '../core/utils.js';
 import { aerodromeCardSnapshot, buildVeNftRewardTotals, veNftPositionsSignature } from '../protocols/vedex.js';
+import { expectOf } from '../tx/guard.js';
 
 export async function buildAerodromeClaimPlan(account) {
   const raw = await chainCall(AERODROME.chainId, AERODROME.veSugar, BY_ACCOUNT + encodeAddress(account));
@@ -118,7 +119,7 @@ export function buildAerodromeClaimTxs(plan, venue = aerodromeVenue()) {
         data += encodeUint256(BigInt(arr.length));
         arr.forEach((t) => { data += encodeAddress(t); });
       });
-      txs.push({ label, to: venue.voter, data, chainId: venue.chainId });
+      txs.push({ label, to: venue.voter, data, chainId: venue.chainId, expect: expectOf(entry[group].values()) });
     }
   }
   return txs;

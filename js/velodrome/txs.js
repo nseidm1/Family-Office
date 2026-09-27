@@ -27,6 +27,7 @@ import { VELODROME, VELODROME_CLAIM } from '../protocols/config.js';
 import { OPTIMISM } from '../core/chains.js';
 import { chainCall } from '../rpc-waterfall.js';
 import { encodeAddress, encodeUint256, log, short, word } from '../core/utils.js';
+import { expectOf } from '../tx/guard.js';
 
 /* ---------- leaf: claim fees and incentives ---------- */
 
@@ -73,6 +74,7 @@ export function buildLeafClaimTxs(chainId, byVenft, recipient) {
           label: `claim ${group === 'fees' ? 'fees' : 'incentives'} (veNFT #${venftId}, ${tokens.length} token${tokens.length === 1 ? '' : 's'})`,
           to: contract,
           data,
+          expect: expectOf([tokenMap]),
           chainId,
         });
       }

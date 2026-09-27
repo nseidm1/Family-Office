@@ -5,6 +5,7 @@ import { privacyHidden, setSensitiveText } from './core/prefs.js';
 import { state } from './core/state.js';
 import { $, formatEther, log, logErr } from './core/utils.js';
 import { addr, uiLog } from './core/ui-debug.js';
+import { guardRequest } from './tx/guard.js';
 
 export const discovered = new Map(); // rdns -> { info, provider }
 
@@ -136,6 +137,7 @@ export function teardown() {
 
 export async function rpc(method, params = []) {
   if (!state.provider) throw new Error('no provider');
+  guardRequest(method, params, state.chainId); // FA-15127: an unknown target or spender never reaches the wallet prompt
   log(`→ ${method} ${params.length ? JSON.stringify(params) : ''}`.trim());
   const started = performance.now();
   const result = await state.provider.request({ method, params });
