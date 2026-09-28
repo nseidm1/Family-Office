@@ -1,0 +1,17 @@
+{
+  "product": "family-office",
+  "color": {
+    "primary": "#7c5cff",
+    "background": "#0a0a10",
+    "surface": "#101018",
+    "border": "#23232f",
+    "onSurface": "#e9e9f0",
+    "muted": "#8b8b9c",
+    "ok": "#34d399",
+    "err": "#f87171"
+  },
+  "type": { "small": 12, "body": 13, "title": 16 },
+  "space": { "xs": 6, "sm": 8, "md": 12, "lg": 16 },
+  "radius": { "sm": 8, "md": 12, "pill": 999 },
+  "motion": { "fast": 150, "base": 200, "slow": 300 }
+}
