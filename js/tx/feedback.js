@@ -1,4 +1,5 @@
 import { money, uiLog, uiTrace } from '../core/ui-debug.js';
+import { reducedMotion } from '../core/motion.js';
 
 export function launchConfetti() {
   const canvas = document.createElement('canvas');
@@ -129,7 +130,7 @@ export function showTxSuccessPopup({ title, sub, details = [], ctaLabel = 'Done'
   backdrop.appendChild(card);
   document.body.appendChild(backdrop);
 
-  const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const reduceMotion = reducedMotion(window);
   // rAF here is only to get the `is-open` transition to actually animate (the class has to land
   // in a LATER frame than the node's insertion, or the browser coalesces both into one style
   // resolution and the element simply appears). But a hidden tab never fires rAF at all — the

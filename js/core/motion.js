@@ -1,0 +1,21 @@
+export const MOTION = Object.freeze({ fast: 150, base: 200, slow: 300, ease: 'cubic-bezier(0.2, 0, 0, 1)' });
+export const COMPOSITED = Object.freeze(['transform', 'opacity']);
+export const FRAME_MS = 1000 / 60;
+const REDUCE = '(prefers-reduced-motion: reduce)';
+export const reducedMotion = (win = globalThis) => Boolean(win && win.matchMedia && win.matchMedia(REDUCE).matches);
+const TIMING = ['offset', 'easing', 'composite'];
+const styled = (f) => Object.keys(f).filter((k) => !TIMING.includes(k));
+export const composited = (frames) => frames.flatMap(styled).every((p) => COMPOSITED.includes(p));
+export const jank = (deltas, budget = FRAME_MS) => deltas.filter((d) => d > 2 * budget).length;
+export const smooth = (deltas, budget = FRAME_MS) => deltas.length > 0 && jank(deltas, budget) * 20 <= deltas.length;
+const endOf = (frames) => Object.fromEntries(styled(frames[frames.length - 1]).map((k) => [k, frames[frames.length - 1][k]]));
+const settle = (el, frames) => { Object.assign(el.style, endOf(frames)); return { reduced: true, finished: Promise.resolve(el) }; };
+const LAYOUT = 'motion: only transform and opacity animate, so the phone stays on the compositor';
+const timed = (opts) => ({ duration: MOTION.base, easing: MOTION.ease, fill: 'both', ...opts });
+const ended = (a, ms, el) => new Promise((ok) => { a.onfinish = () => ok(el); setTimeout(() => ok(el), ms + 100); });
+const run = (el, frames, o) => ({ reduced: false, finished: ended(el.animate(frames, o), o.duration, el) });
+export const motion = (el, frames, opts = {}, win = globalThis) => { if (!composited(frames)) throw new Error(LAYOUT); return reducedMotion(win) ? settle(el, frames) : run(el, frames, timed(opts)); };
+const note = (s, t) => { if (s.last !== null) s.ds.push(t - s.last); s.last = t; if (s.t0 === null) s.t0 = t; };
+const step = (s, win, ok) => (t) => { note(s, t); if (t - s.t0 >= s.ms) ok(s.ds); else win.requestAnimationFrame(step(s, win, ok)); };
+export const frameTrace = (ms, win = globalThis) => new Promise((ok) => win.requestAnimationFrame(step({ ms, ds: [], last: null, t0: null }, win, ok)));
+// FA-15281: the one motion primitive for product UI: design-tokens.json timing, compositor-only keyframes, an onfinish with a timer fallback, reduced motion settled at once, and a rAF frame trace judged against a 60 fps budget.

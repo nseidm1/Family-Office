@@ -6,6 +6,7 @@ import { setSensitiveText } from '../core/prefs.js';
 import { notifyUserPanelInteraction } from '../core/interaction.js';
 import { $, fadeInSwap, log, spinnerNode, usd } from '../core/utils.js';
 import { money, uiTrace } from '../core/ui-debug.js';
+import { reducedMotion } from '../core/motion.js';
 
 export function buildRow(k, v, isClaim, sensitive = true) {
   const row = document.createElement('div');
@@ -67,7 +68,7 @@ export function renderRowsAndClaims(bodyEl, rows, claimList) {
 // no parallel expand/collapse machinery. Respects prefers-reduced-motion
 // (falls back to an instant native toggle, matching every other animation
 // in this file).
-export const REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+export const REDUCED_MOTION = reducedMotion(window);
 
 export function setAccordionOpen(details, body, open) {
   if (details.open === open && details.dataset.animating !== 'true') return;
